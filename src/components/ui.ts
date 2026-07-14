@@ -1,0 +1,105 @@
+import type { CSSProperties } from 'react'
+import type { Expense, Member, SettlementStatus, WarikanEvent } from '../domain/types'
+
+export const formatYen = (amount: number) =>
+  new Intl.NumberFormat('ja-JP', {
+    style: 'currency',
+    currency: 'JPY',
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(amount) ? amount : 0)
+
+const parseDate = (value: string) => {
+  const [year, month, day] = value.split('-').map(Number)
+  if (!year || !month || !day) return null
+  const date = new Date(year, month - 1, day)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+export const formatEventDate = (value: string) => {
+  const date = parseDate(value)
+  if (!date) return value
+  return new Intl.DateTimeFormat('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short',
+  }).format(date)
+}
+
+export const formatEventDateRange = (event: WarikanEvent) => {
+  if (event.startDate === event.endDate) return formatEventDate(event.startDate)
+  return `${formatEventDate(event.startDate)} – ${formatEventDate(event.endDate)}`
+}
+
+export const getDurationLabel = (event: WarikanEvent) => {
+  if (event.eventType === 'single_day') return '終日'
+  const start = parseDate(event.startDate)
+  const end = parseDate(event.endDate)
+  if (!start || !end) return '宿泊'
+  const nights = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000))
+  return `${nights}泊${nights + 1}日`
+}
+
+export interface EventDayOption {
+  dayIndex?: number
+  label: string
+}
+
+export const getEventDayOptions = (event: WarikanEvent): EventDayOption[] => {
+  if (event.eventType !== 'overnight') return []
+  const start = parseDate(event.startDate)
+  const end = parseDate(event.endDate)
+  if (!start || !end) return [{ label: '日付未指定' }]
+
+  const days = Math.min(
+    31,
+    Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1),
+  )
+  const options = Array.from({ length: days }, (_, index) => {
+    const date = new Date(start)
+    date.setDate(start.getDate() + index)
+    return {
+      dayIndex: index + 1,
+      label: new Intl.DateTimeFormat('ja-JP', {
+        month: 'numeric',
+        day: 'numeric',
+        weekday: 'short',
+      }).format(date),
+    }
+  })
+  return [...options, { label: '日付未指定' }]
+}
+
+export const expenseDayLabel = (event: WarikanEvent, expense: Expense) => {
+  if (!expense.dayIndex) return '日付未指定'
+  return (
+    getEventDayOptions(event).find((option) => option.dayIndex === expense.dayIndex)?.label ??
+    '日付未指定'
+  )
+}
+
+export const memberName = (members: Member[], id: string) =>
+  members.find((member) => member.id === id)?.name ?? '不明な参加者'
+
+/** Golden-angle hues provide a stable palette for the maximum 50 participants. */
+export const memberColor = (index: number) => {
+  const hue = Math.round((18 + index * 137.508) % 360)
+  return {
+    solid: `hsl(${hue} 58% 44%)`,
+    soft: `hsl(${hue} 72% 94%)`,
+    border: `hsl(${hue} 48% 82%)`,
+  }
+}
+
+export const memberPillStyle = (index: number): CSSProperties => {
+  const color = memberColor(index)
+  return { color: color.solid, backgroundColor: color.soft, borderColor: color.border }
+}
+
+export const SETTLEMENT_STATUS_META: Record<
+  SettlementStatus,
+  { label: string; tone: 'muted' | 'warning' | 'success' }
+> = {
+  pending: { label: '未払い', tone: 'muted' },
+  reported: { label: '確認待ち', tone: 'warning' },
+  paid: { label: '済', tone: 'success' },
+}
