@@ -1,4 +1,4 @@
-import type { Expense, Member, Settlement, WarikanEvent } from '../domain/types'
+import type { EventDraft, Expense, Member, Settlement, WarikanEvent } from '../domain/types'
 import type { SettlementStatus } from '../domain/types'
 
 export interface BackendMember extends Member {
@@ -47,6 +47,7 @@ export interface UnfinalizeEventResult {
 }
 
 export interface WarikanBackend {
+  createEvent(draft: EventDraft): Promise<EventState>
   getEventState(shareToken: string): Promise<EventState>
   joinEvent(shareToken: string, deviceToken: string, name: string): Promise<JoinEventResult>
   claimMember(shareToken: string, claimToken: string, deviceToken: string): Promise<ClaimMemberResult>

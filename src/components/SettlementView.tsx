@@ -127,23 +127,23 @@ function AdvanceBar({ side, members, maxAmount, position }: { side: BarSide; mem
   const memberIndex = Math.max(0, members.findIndex((member) => member.id === side.memberId))
   return (
     <div className="advance-bar-side">
-      <div className="advance-bar-side__heading">
-        <span className="member-label-soft" style={memberPillStyle(memberIndex)}>{memberName(members, side.memberId)}の立替額</span>
-        <strong>{formatYen(side.amount)}</strong>
-      </div>
       <div className={`advance-bar-side__visual advance-bar-side__visual--${position}`}>
-        <div className="advance-bar-track" aria-label={`${memberName(members, side.memberId)}の立替額${formatYen(side.amount)}`}>
-          {side.items.map((item) => (
-            <span
-              className="advance-bar-segment"
-              key={`${item.expenseId}:${item.fromMemberId}`}
-              style={{
-                height: `${(item.amount / maxAmount) * 100}%`,
-                background: CATEGORY_META[item.category ?? 'other'].color,
-              }}
-              title={`${item.expenseTitle} ${formatYen(item.amount)}`}
-            />
-          ))}
+        <div className="advance-bar-column">
+          <div className="advance-bar-amount"><span>立替額</span><strong>{formatYen(side.amount)}</strong></div>
+          <div className="advance-bar-track" aria-label={`${memberName(members, side.memberId)}の立替額${formatYen(side.amount)}`}>
+            {side.items.map((item) => (
+              <span
+                className="advance-bar-segment"
+                key={`${item.expenseId}:${item.fromMemberId}`}
+                style={{
+                  height: `${(item.amount / maxAmount) * 100}%`,
+                  background: CATEGORY_META[item.category ?? 'other'].color,
+                }}
+                title={`${item.expenseTitle} ${formatYen(item.amount)}`}
+              />
+            ))}
+          </div>
+          <span className="advance-bar-member" style={memberPillStyle(memberIndex)}>{memberName(members, side.memberId)}</span>
         </div>
         <div className="advance-bar-legend">
           {side.items.length === 0 ? (
@@ -170,25 +170,35 @@ function PairAdvanceBars({ settlement, members, currentMemberId, organizer }: { 
   const currentOnRight = !organizer && currentMemberId === toSide.memberId
   const leftSide = currentOnRight ? toSide : fromSide
   const rightSide = currentOnRight ? fromSide : toSide
+  const isCurrentPaying = !organizer && currentMemberId === settlement.fromMemberId
+  const isCurrentReceiving = !organizer && currentMemberId === settlement.toMemberId
+  const resultTone = settlement.amount === 0 ? 'even' : isCurrentPaying ? 'pay' : isCurrentReceiving ? 'receive' : 'neutral'
+  const participantFacingFromName = fromName === 'あなた' ? '幹事' : fromName
+  const participantFacingToName = toName === 'あなた' ? '幹事' : toName
+  const resultLabel = organizer
+    ? `${fromName} → ${toName} に支払う`
+    : isCurrentPaying
+      ? `あなた → ${participantFacingToName} に支払う`
+      : `${participantFacingFromName} → あなたが受け取る`
 
   return (
     <div className="pair-comparison">
+      <div className={`pair-result pair-result--${resultTone}`}>
+        {settlement.amount === 0 ? (
+          <><strong>差額なし</strong><span>お互いの立て替えが相殺されています</span></>
+        ) : (
+          <>
+            <span className="pair-result__direction">{resultLabel}</span>
+            <strong>{formatYen(settlement.amount)}</strong>
+            <small>{formatYen(settlement.grossAmount)} − {formatYen(settlement.offsetAmount)}</small>
+          </>
+        )}
+      </div>
       <p className="pair-comparison__caption">同じ基準で、相手の分を立て替えた金額を比較</p>
       <div className="pair-bars">
         <AdvanceBar side={leftSide} members={members} maxAmount={maxAmount} position="left" />
         <span className="pair-bars__versus">比較</span>
         <AdvanceBar side={rightSide} members={members} maxAmount={maxAmount} position="right" />
-      </div>
-      <div className={`pair-result ${settlement.amount === 0 ? 'pair-result--even' : ''}`}>
-        {settlement.amount === 0 ? (
-          <><strong>差額なし</strong><span>お互いの負担が相殺されています</span></>
-        ) : (
-          <>
-            <p><span>立替が多い側</span>{formatYen(settlement.grossAmount)} − <span>少ない側</span>{formatYen(settlement.offsetAmount)}</p>
-            <div><strong>{fromName}</strong><b aria-hidden="true">→</b><strong>{toName}</strong></div>
-            <strong>{formatYen(settlement.amount)} 支払う</strong>
-          </>
-        )}
       </div>
     </div>
   )
@@ -282,20 +292,10 @@ export function SettlementView({
                 </div>
               ) : (
                 sortedSettlements.map((settlement) => {
-                  const currentOnRight = !organizer && settlement.toMemberId === currentMemberId
-                  const leftMemberId = currentOnRight ? settlement.toMemberId : settlement.fromMemberId
-                  const rightMemberId = currentOnRight ? settlement.fromMemberId : settlement.toMemberId
                   return (
                   <article className="pair-settlement-card" key={settlement.id}>
                     <header className="pair-settlement-card__header">
-                      <div>
-                        <span>相手の分を立て替えた金額を比較</span>
-                        <strong className="pair-member-names">
-                          <span style={memberPillStyle(Math.max(0, members.findIndex((member) => member.id === leftMemberId)))}>{memberName(members, leftMemberId)}</span>
-                          <b>と</b>
-                          <span style={memberPillStyle(Math.max(0, members.findIndex((member) => member.id === rightMemberId)))}>{memberName(members, rightMemberId)}</span>
-                        </strong>
-                      </div>
+                      <strong>相手ごとの立替比較</strong>
                       <StatusBadge status={settlement.status} amount={settlement.amount} />
                     </header>
                     <PairAdvanceBars settlement={settlement} members={members} currentMemberId={currentMemberId} organizer={organizer} />

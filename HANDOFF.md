@@ -1,6 +1,37 @@
 # Warikan Web MVP 引き継ぎ
 
-更新日: 2026-07-13
+更新日: 2026-07-14
+
+## 0. 2026-07-14 クラウドSupabase接続の進捗
+
+- Supabaseプロジェクト `Warikan`（ref: `nrixujdkgvexnnqfoned`）へローカルをリンク済み
+- `20260714000100`〜`20260714000400` の4マイグレーションをクラウドDBへ適用済み
+- `.env.local` にクラウドURLとpublishable keyを設定済み（gitignore対象、service role keyは未使用）
+- フロントへSupabaseクライアント共有、セッション復元、Google OAuth開始、ログアウトを実装
+- ログイン済み幹事のイベント作成を `create_event` RPCへ接続し、返却された状態と共有URLを画面へ反映
+- GoogleプロバイダーはSupabase上でまだDisabled。Google CloudのClient ID / Client Secret設定が必要
+- Browser MCPは接続・読み取り成功。Supabaseダッシュボードとローカル画面を確認済みだが、クリック操作はWebSocket timeoutになることがある
+- 4本目で、認証済み幹事がdevice tokenなしで参加者系支出RPCのactorとして解決されるよう修正
+- 検証: `npm test` 19件成功、`npm run build` 成功、`npm run backend:validate` 成功
+
+次の最短手順:
+
+1. Google CloudでOAuth Web Clientを作成し、承認済みリダイレクトURIへ `https://nrixujdkgvexnnqfoned.supabase.co/auth/v1/callback` を追加
+2. Supabase Dashboard > Authentication > Sign In / Providers > Google にClient ID / Secretを設定して有効化
+3. Authentication > URL Configurationへローカル／本番URLを登録
+4. ローカル画面の「Googleでログイン」から実ログインし、`create_event` と共有URL発行をE2E確認
+5. `get_event_state` / `join_event` と支出・精算RPCを状態hookへ段階的に接続
+
+### 2026-07-14 UIレビュー反映
+
+- 立替ダッシュボードの4つのドーナツグラフを、金額の大きい順に並ぶ横棒グラフへ変更
+- 各棒に支出名／相手名、金額、全体比率を併記し、偏りと絶対額を同時に読める構成へ変更
+- 精算比較カードの支払／受取結論をカード上部中央へ移動
+- 参加者視点では `あなた → 相手に支払う` または `相手 → あなたが受け取る` と明示
+- 幹事名「あなた」と参加者本人を示す「あなた」の重複を避けるため、参加者向け結論では幹事を「幹事」と表記
+- 比較する各人の名前カードを、それぞれの縦棒グラフ直下へ移動
+- 支払側は淡い赤、受取側は淡い緑、幹事の全体表示はオレンジ系の中立色に設定
+- ダッシュボードと精算画面の主要文字・補助文字・金額・凡例を拡大し、ウェイトを上げた
 
 ## 1. 目標と方針
 

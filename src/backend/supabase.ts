@@ -11,11 +11,15 @@ import type {
   UnfinalizeEventResult,
 } from './types'
 import type { SettlementStatus } from '../domain/types'
+import type { EventDraft } from '../domain/types'
 
 export interface SupabaseConfig {
   url: string
   publishableKey: string
 }
+
+let sharedClient: SupabaseClient | null = null
+let sharedClientKey = ''
 
 function requireData<T>(data: T | null, error: { message: string } | null): T {
   if (error) throw new Error(error.message)
@@ -47,6 +51,22 @@ export function readSupabaseConfig(): SupabaseConfig | null {
   return url && publishableKey ? { url, publishableKey } : null
 }
 
+export function getSupabaseClient(config = readSupabaseConfig()): SupabaseClient | null {
+  if (!config) return null
+  const key = `${config.url}\n${config.publishableKey}`
+  if (!sharedClient || sharedClientKey !== key) {
+    sharedClient = createClient(config.url, config.publishableKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    })
+    sharedClientKey = key
+  }
+  return sharedClient
+}
+
 export function generateDeviceToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32))
   const binary = String.fromCharCode(...bytes)
@@ -54,11 +74,20 @@ export function generateDeviceToken(): string {
 }
 
 export function createWarikanBackend(config: SupabaseConfig, client?: SupabaseClient): WarikanBackend {
-  const supabase = client ?? createClient(config.url, config.publishableKey, {
-    auth: { persistSession: true, autoRefreshToken: true },
-  })
+  const supabase = client ?? getSupabaseClient(config)
+  if (!supabase) throw new Error('Supabaseの接続設定がありません')
 
   return {
+    async createEvent(draft: EventDraft) {
+      const { data, error } = await supabase.rpc('create_event', {
+        p_title: draft.title.trim(),
+        p_event_type: draft.eventType,
+        p_start_date: draft.startDate,
+        p_end_date: draft.eventType === 'single_day' ? draft.startDate : draft.endDate,
+        p_capacity: draft.capacity,
+      })
+      return requireData(data as EventState | null, error)
+    },
     async getEventState(shareToken) {
       const { data, error } = await supabase.rpc('get_event_state', { p_share_token: shareToken })
       return requireData(data as EventState | null, error)

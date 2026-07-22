@@ -58,6 +58,19 @@ VITE_SUPABASE_PUBLISHABLE_KEY=...
 
 秘密鍵やservice role keyをVite環境変数へ入れてはいけない。通知の実配送は将来のEdge Functionまたは専用workerからservice roleでoutboxを処理する。
 
+## クラウドプロジェクト
+
+- Project name: `Warikan`
+- Project ref: `nrixujdkgvexnnqfoned`
+- 2026-07-14時点で4本のマイグレーションを適用済み
+- フロントはpublishable keyのみを使用する
+
+Googleログインを有効化するには、Google Cloud OAuthクライアントの承認済みリダイレクトURIへ次を登録し、Supabase DashboardのGoogle providerへClient ID / Secretを設定する。
+
+```text
+https://nrixujdkgvexnnqfoned.supabase.co/auth/v1/callback
+```
+
 ## 通知設計
 
 イベントごとにBotプロセスを作らず、共通Botと外部スペースを `event_integrations` でイベントへ紐付ける。アプリ本体は `notification_jobs` に送信意図を記録し、LINE／Discord固有の送信処理は別adapterで実行する。`dedupe_key` により同一リマインドの重複送信を防ぐ。

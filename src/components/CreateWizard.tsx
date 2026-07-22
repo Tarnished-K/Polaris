@@ -2,9 +2,14 @@ import { useMemo, useState } from 'react'
 import type { EventDraft } from '../domain/types'
 
 interface CreateWizardProps {
-  onCreate: (draft: EventDraft) => void
+  onCreate: (draft: EventDraft) => void | Promise<void>
   onLoadDemo: () => void
   onLoadFourPersonDemo: () => void
+  cloudConfigured?: boolean
+  authLoading?: boolean
+  userEmail?: string | null
+  onGoogleSignIn?: () => Promise<void>
+  onSignOut?: () => Promise<void>
 }
 
 type DurationChoice = 'single' | 'one_night' | 'multi_night'
@@ -21,7 +26,16 @@ const addDays = (value: string, days: number) => {
   return localIsoDate(date)
 }
 
-export function CreateWizard({ onCreate, onLoadDemo, onLoadFourPersonDemo }: CreateWizardProps) {
+export function CreateWizard({
+  onCreate,
+  onLoadDemo,
+  onLoadFourPersonDemo,
+  cloudConfigured = false,
+  authLoading = false,
+  userEmail,
+  onGoogleSignIn,
+  onSignOut,
+}: CreateWizardProps) {
   const today = useMemo(() => localIsoDate(), [])
   const [step, setStep] = useState(1)
   const [title, setTitle] = useState('')
@@ -30,6 +44,7 @@ export function CreateWizard({ onCreate, onLoadDemo, onLoadFourPersonDemo }: Cre
   const [endDate, setEndDate] = useState(addDays(today, 1))
   const [capacity, setCapacity] = useState(6)
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
   const setDurationChoice = (choice: DurationChoice) => {
     setDuration(choice)
@@ -57,7 +72,7 @@ export function CreateWizard({ onCreate, onLoadDemo, onLoadFourPersonDemo }: Cre
     return ''
   }
 
-  const goNext = () => {
+  const goNext = async () => {
     const message = validateStep()
     if (message) {
       setError(message)
@@ -69,7 +84,8 @@ export function CreateWizard({ onCreate, onLoadDemo, onLoadFourPersonDemo }: Cre
       return
     }
     try {
-      onCreate({
+      setSubmitting(true)
+      await onCreate({
         title: title.trim(),
         eventType: duration === 'single' ? 'single_day' : 'overnight',
         startDate,
@@ -82,6 +98,21 @@ export function CreateWizard({ onCreate, onLoadDemo, onLoadFourPersonDemo }: Cre
           ? cause.message
           : 'イベントを作成できませんでした。もう一度お試しください。',
       )
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const runAuthAction = async (action?: () => Promise<void>) => {
+    if (!action) return
+    setError('')
+    setSubmitting(true)
+    try {
+      await action()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'ログイン処理に失敗しました。')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -127,6 +158,20 @@ export function CreateWizard({ onCreate, onLoadDemo, onLoadFourPersonDemo }: Cre
             <span key={item} className={item <= step ? 'is-active' : ''} />
           ))}
         </div>
+
+        {cloudConfigured && (
+          <div className="cloud-auth-panel">
+            <div>
+              <strong>クラウド保存</strong>
+              <span>{authLoading ? 'ログイン状態を確認中…' : userEmail ? `${userEmail} でログイン中` : 'イベント作成にはGoogleログインが必要です'}</span>
+            </div>
+            {userEmail ? (
+              <button type="button" className="button button--secondary" disabled={submitting} onClick={() => void runAuthAction(onSignOut)}>ログアウト</button>
+            ) : (
+              <button type="button" className="button button--secondary" disabled={authLoading || submitting} onClick={() => void runAuthAction(onGoogleSignIn)}>Googleでログイン</button>
+            )}
+          </div>
+        )}
 
         <div className="wizard-body">
           {step === 1 && (
@@ -239,8 +284,8 @@ export function CreateWizard({ onCreate, onLoadDemo, onLoadFourPersonDemo }: Cre
           >
             戻る
           </button>
-          <button type="button" className="button button--primary button--grow" onClick={goNext}>
-            {step === 3 ? '作成する' : '次へ'}
+          <button type="button" className="button button--primary button--grow" disabled={submitting} onClick={() => void goNext()}>
+            {submitting ? '処理中…' : step === 3 ? '作成する' : '次へ'}
           </button>
         </div>
       </section>

@@ -16,6 +16,7 @@ import type {
 } from '../domain/types'
 import { CATEGORY_IDS } from '../domain/types'
 import { createRandomId, createShareToken } from '../lib/random'
+import type { EventState } from '../backend/types'
 
 export type AppView = 'create' | 'home' | 'expense' | 'dashboard' | 'settlement' | 'settings'
 
@@ -53,6 +54,7 @@ export interface WarikanAppState {
   view: AppView
   setView: Dispatch<SetStateAction<AppView>>
   setCurrentMember: (memberId: string) => void
+  loadRemoteEvent: (remote: EventState, currentMemberId?: string | null) => void
   createEvent: (draft: EventDraft) => void
   updateEvent: (draft: EventDraft) => void
   addMember: (name: string) => void
@@ -311,6 +313,20 @@ export function useWarikanApp(): WarikanAppState {
         ? { ...current, currentMemberId: memberId, view: current.view === 'expense' || current.view === 'settings' ? 'home' : current.view }
         : current,
     )
+  }, [])
+
+  const loadRemoteEvent = useCallback((remote: EventState, memberId?: string | null) => {
+    const resolvedMemberId = memberId && remote.members.some((member) => member.id === memberId)
+      ? memberId
+      : null
+    setState({
+      event: remote.event,
+      members: remote.members,
+      currentMemberId: resolvedMemberId,
+      expenses: remote.expenses,
+      settlements: remote.settlements,
+      view: 'home',
+    })
   }, [])
 
   const createEvent = useCallback((draft: EventDraft) => {
@@ -728,6 +744,7 @@ export function useWarikanApp(): WarikanAppState {
     view: state.view,
     setView,
     setCurrentMember,
+    loadRemoteEvent,
     createEvent,
     updateEvent,
     addMember,

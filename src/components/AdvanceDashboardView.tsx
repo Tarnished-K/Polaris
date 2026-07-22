@@ -16,40 +16,40 @@ interface AdvanceDashboardViewProps {
   onReset: () => void
 }
 
-interface PieItem {
+interface ChartItem {
   id: string
   label: string
   amount: number
   color: string
 }
 
-function DonutChart({ title, description, items, total, animationIndex }: { title: string; description: string; items: PieItem[]; total: number; animationIndex: number }) {
-  let cursor = 0
-  const stops = items.map((item) => {
-    const start = cursor
-    cursor += total > 0 ? (item.amount / total) * 100 : 0
-    return `${item.color} ${start}% ${cursor}%`
-  })
-  const background = total > 0 ? `conic-gradient(${stops.join(', ')})` : '#ece8e1'
+function BarChart({ title, description, items, total, animationIndex }: { title: string; description: string; items: ChartItem[]; total: number; animationIndex: number }) {
+  const sortedItems = [...items].sort((left, right) => right.amount - left.amount)
+  const maxAmount = Math.max(...sortedItems.map((item) => item.amount), 1)
 
   return (
     <section className="dashboard-chart-card" style={{ '--chart-delay': `${animationIndex * 90}ms` } as CSSProperties}>
-      <div className="dashboard-chart-card__heading"><h3>{title}</h3><p>{description}</p></div>
-      <div className="dashboard-chart-card__body">
-        <div className="dashboard-donut" style={{ background }} role="img" aria-label={`${title}、合計${formatYen(total)}`}>
-          <div><span>合計</span><strong>{formatYen(total)}</strong></div>
-        </div>
-        <div className="dashboard-donut-legend">
-          {items.length === 0 ? <p>確定済みの対象支出はありません</p> : items.map((item) => (
-            <div key={item.id}>
-              <i style={{ background: item.color }} />
+      <div className="dashboard-chart-card__heading">
+        <div><h3>{title}</h3><p>{description}</p></div>
+        <div className="dashboard-chart-total"><span>合計</span><strong>{formatYen(total)}</strong></div>
+      </div>
+      <div className="dashboard-bar-chart" role="img" aria-label={`${title}、合計${formatYen(total)}`}>
+        {sortedItems.length === 0 ? <p className="dashboard-bar-chart__empty">確定済みの対象支出はありません</p> : sortedItems.map((item) => (
+          <div className="dashboard-bar-row" key={item.id}>
+            <div className="dashboard-bar-row__label">
               <span>{item.label}</span>
-              <em>{Math.round((item.amount / total) * 100)}%</em>
               <strong>{formatYen(item.amount)}</strong>
             </div>
-          ))}
+            <div className="dashboard-bar-track" aria-hidden="true">
+              <span style={{ '--bar-width': `${(item.amount / maxAmount) * 100}%`, background: item.color } as CSSProperties} />
+            </div>
+            <small>{Math.round((item.amount / total) * 100)}%</small>
+          </div>
+        ))}
+        {sortedItems.length > 0 && (
+          <div className="dashboard-bar-scale" aria-hidden="true"><span>0円</span><span>金額が大きいほど長い</span></div>
+        )}
         </div>
-      </div>
     </section>
   )
 }
@@ -65,8 +65,8 @@ export function AdvanceDashboardView({
   onReset,
 }: AdvanceDashboardViewProps) {
   const summary = useMemo(() => {
-    const outgoingByExpense: PieItem[] = []
-    const incomingByExpense: PieItem[] = []
+    const outgoingByExpense: ChartItem[] = []
+    const incomingByExpense: ChartItem[] = []
     const outgoingMembers = new Map<string, number>()
     const incomingPayers = new Map<string, number>()
     let outgoingTotal = 0
@@ -148,16 +148,16 @@ export function AdvanceDashboardView({
         <section className="dashboard-chart-section" aria-labelledby="advanced-heading">
           <div className="dashboard-section-heading"><span>自分が立て替えた</span><h2 id="advanced-heading">受け取る側の内訳</h2></div>
           <div className="dashboard-chart-grid">
-            <DonutChart title="支出イベントごとの割合" description="どの支出で立て替えたか" items={summary.outgoingByExpense} total={summary.outgoingTotal} animationIndex={0} />
-            <DonutChart title="立替相手ごとの割合" description="誰の分を立て替えたか" items={summary.outgoingByMember} total={summary.outgoingTotal} animationIndex={1} />
+            <BarChart title="支出イベントごとの金額" description="どの支出の立て替えが重かったか" items={summary.outgoingByExpense} total={summary.outgoingTotal} animationIndex={0} />
+            <BarChart title="立替相手ごとの金額" description="誰の分を多く立て替えたか" items={summary.outgoingByMember} total={summary.outgoingTotal} animationIndex={1} />
           </div>
         </section>
 
         <section className="dashboard-chart-section" aria-labelledby="received-heading">
           <div className="dashboard-section-heading dashboard-section-heading--received"><span>立て替えてもらった</span><h2 id="received-heading">支払う側の内訳</h2></div>
           <div className="dashboard-chart-grid">
-            <DonutChart title="支出イベントごとの割合" description="何の支出で立て替えてもらったか" items={summary.incomingByExpense} total={summary.incomingTotal} animationIndex={2} />
-            <DonutChart title="立替者ごとの割合" description="誰にいくら立て替えてもらったか" items={summary.incomingByPayer} total={summary.incomingTotal} animationIndex={3} />
+            <BarChart title="支出イベントごとの金額" description="何の支出を多く立て替えてもらったか" items={summary.incomingByExpense} total={summary.incomingTotal} animationIndex={2} />
+            <BarChart title="立替者ごとの金額" description="誰にいくら立て替えてもらったか" items={summary.incomingByPayer} total={summary.incomingTotal} animationIndex={3} />
           </div>
         </section>
       </main>

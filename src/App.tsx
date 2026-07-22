@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import { CreateWizard } from './components/CreateWizard'
 import { AdvanceDashboardView } from './components/AdvanceDashboardView'
@@ -9,9 +9,17 @@ import { HomeView } from './components/HomeView'
 import { SettlementView } from './components/SettlementView'
 import { TestResetButton } from './components/TestResetButton'
 import { useWarikanApp } from './state/useWarikanApp'
+import { createWarikanBackend, readSupabaseConfig } from './backend/supabase'
+import { useSupabaseAuth } from './backend/useSupabaseAuth'
+import type { EventDraft } from './domain/types'
 
 export function App() {
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
+  const auth = useSupabaseAuth()
+  const backend = useMemo(() => {
+    const config = readSupabaseConfig()
+    return config ? createWarikanBackend(config) : null
+  }, [])
   const {
     event,
     members,
@@ -24,7 +32,8 @@ export function App() {
     view,
     setView,
     setCurrentMember,
-    createEvent,
+    createEvent: createLocalEvent,
+    loadRemoteEvent,
     updateEvent,
     addMember,
     removeMember,
@@ -37,6 +46,18 @@ export function App() {
     unfinalizeEvent,
     resetApp,
   } = useWarikanApp()
+  const createEvent = async (draft: EventDraft) => {
+    if (!backend) {
+      createLocalEvent(draft)
+      return
+    }
+    if (!auth.user) throw new Error('先にGoogleでログインしてください')
+
+    const remote = await backend.createEvent(draft)
+    const organizerId = remote.members.find((member) => member.isOrganizer)?.id ?? null
+    loadRemoteEvent(remote, organizerId)
+    window.history.replaceState(null, '', `/e/${remote.event.shareToken}`)
+  }
   const resetToStart = () => {
     setEditingExpenseId(null)
     resetApp()
@@ -49,6 +70,11 @@ export function App() {
         onCreate={createEvent}
         onLoadDemo={loadDemo}
         onLoadFourPersonDemo={loadFourPersonDemo}
+        cloudConfigured={auth.configured}
+        authLoading={auth.loading}
+        userEmail={auth.user?.email ?? null}
+        onGoogleSignIn={auth.signInWithGoogle}
+        onSignOut={auth.signOut}
       />
     )
   }
