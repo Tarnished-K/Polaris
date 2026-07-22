@@ -2,6 +2,14 @@
 
 更新日: 2026-07-14
 
+## 2026-07-23 フェーズ1 Google認証の進捗
+
+- Supabase AuthのSite URLを`http://localhost:5173`へ変更し、`http://localhost:5173/**`と`http://127.0.0.1:5173/**`を追加Redirect URLとしてクラウドへ反映した。`supabase/config.toml`も同じ値へ更新した。
+- Google OAuth開始時の`redirectTo`が常に`/`を指していたため、現在のpathnameとqueryを保持する`buildOAuthRedirectUrl`を追加した。共有URL`/e/{shareToken}`からログインしても同じイベントへ戻れる。
+- リダイレクトURLのユニットテスト2件を追加し、対象テストと本番ビルドが成功した。
+- Google Providerは引き続き無効で、Client ID / Secretは未設定。Google CloudでOAuth Web Clientを作成し、`https://nrixujdkgvexnnqfoned.supabase.co/auth/v1/callback`を承認済みリダイレクトURIへ登録した後、Supabaseへ設定する必要がある。
+- BrowserMCPは再接続後もこのCodexセッションでは`Transport closed`となった。Google Cloud Console操作と実ログインE2Eは、ブラウザ接続が利用可能なセッションで継続する。
+
 ## 2026-07-23 フェーズ0 権限検証の完了
 
 - `scripts/validate-backend.mjs`の参加者操作時に、幹事の認証状態が残ったままになっていた検証上の問題を修正した。参加者操作では認証ユーザーを外し、デバイストークンだけで本人確認する。
