@@ -13,10 +13,11 @@ import {
   amountToStrokeWidth,
   formatYen,
   getSettlementRelationshipMapMode,
-  layoutAnnotationGrid,
+  layoutNearbyAnnotations,
   memberColor,
   memberDisplayName,
   memberPillStyle,
+  settlementPerspective,
   SETTLEMENT_STATUS_META,
 } from './ui'
 
@@ -109,6 +110,32 @@ function edgeGeometry({
   return {
     path: `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`,
     label,
+    start,
+    control,
+    end,
+  }
+}
+
+function pointNearRelationshipEdge(
+  geometry: ReturnType<typeof edgeGeometry>,
+  progress: number,
+  perpendicularOffset = 0,
+) {
+  const inverse = 1 - progress
+  const x = inverse ** 2 * geometry.start.x +
+    2 * inverse * progress * geometry.control.x +
+    progress ** 2 * geometry.end.x
+  const y = inverse ** 2 * geometry.start.y +
+    2 * inverse * progress * geometry.control.y +
+    progress ** 2 * geometry.end.y
+  const tangentX = 2 * inverse * (geometry.control.x - geometry.start.x) +
+    2 * progress * (geometry.end.x - geometry.control.x)
+  const tangentY = 2 * inverse * (geometry.control.y - geometry.start.y) +
+    2 * progress * (geometry.end.y - geometry.control.y)
+  const tangentLength = Math.max(1, Math.hypot(tangentX, tangentY))
+  return {
+    x: x - (tangentY / tangentLength) * perpendicularOffset,
+    y: y + (tangentX / tangentLength) * perpendicularOffset,
   }
 }
 
@@ -152,6 +179,8 @@ export function SettlementRelationshipMap({
     setMode(recommendedMode)
   }, [recommendedMode])
 
+  const activeFocusId = focusedMemberId
+  const perspectiveMemberId = activeFocusId ?? currentMemberId ?? egoMemberId
   const memberIds = useMemo(() => new Set(members.map((member) => member.id)), [members])
   const payableSettlements = useMemo(
     () => settlements.filter(
@@ -162,7 +191,16 @@ export function SettlementRelationshipMap({
     ),
     [memberIds, settlements],
   )
-  const mapSettlements = payableSettlements
+  const mapSettlements = useMemo(
+    () => perspectiveMemberId
+      ? payableSettlements.filter(
+        (settlement) =>
+          settlement.fromMemberId === perspectiveMemberId ||
+          settlement.toMemberId === perspectiveMemberId,
+      )
+      : [],
+    [payableSettlements, perspectiveMemberId],
+  )
   const mapMembers = useMemo(() => {
     if (mode !== 'egocentric' || !egoMemberId) return members
     const egoMember = members.find((member) => member.id === egoMemberId)
@@ -206,12 +244,8 @@ export function SettlementRelationshipMap({
     return result
   }, [center.x, center.y, mapMembers, mode])
   const maxAmount = Math.max(...mapSettlements.map((settlement) => settlement.amount), 0)
-  const activeFocusId = focusedMemberId
-  const perspectiveMemberId = mode === 'egocentric' ? activeFocusId : currentMemberId
   const annotationLabel = (settlement: Settlement) => {
-    const amount = `${settlement.status === 'paid' ? '✓ ' : ''}${formatYen(settlement.amount)}`
-    if (mode !== 'circular') return amount
-    return `${memberDisplayName(members, settlement.fromMemberId, currentMemberId)}→${memberDisplayName(members, settlement.toMemberId, currentMemberId)} ${amount}`
+    return `${settlement.status === 'paid' ? '✓ ' : ''}${formatYen(settlement.amount)}`
   }
   const edgeLayouts = new Map<string, ReturnType<typeof edgeGeometry>>()
   mapSettlements.forEach((settlement) => {
@@ -249,26 +283,37 @@ export function SettlementRelationshipMap({
   })
 
   const annotationLayouts = new Map<string, RelationshipAnnotationLayout>()
-  let annotationRowCount = 0
   if (mode === 'circular') {
-    const chipWidths = mapSettlements.map((settlement) => relationshipChipSize(
+    const annotationItems = mapSettlements.map((settlement) => {
+      const chip = relationshipChipSize(
         annotationLabel(settlement),
         settlement.status === 'paid',
         false,
-      ).width)
-    const grid = layoutAnnotationGrid(chipWidths, RELATIONSHIP_MAP_WIDTH - 24)
+      )
+      const geometry = edgeLayouts.get(settlement.id)
+      const progresses = [0.5, 0.6, 0.4, 0.7, 0.3, 0.78, 0.22]
+      const candidates = geometry
+        ? [
+            ...progresses.map((progress) => pointNearRelationshipEdge(geometry, progress)),
+            ...[16, -16, 30, -30].flatMap((offset) =>
+              progresses.map((progress) => pointNearRelationshipEdge(geometry, progress, offset)),
+            ),
+          ]
+        : [center]
+      return { ...chip, candidates }
+    })
+    const points = layoutNearbyAnnotations(
+      annotationItems,
+      RELATIONSHIP_MAP_WIDTH,
+      baseMapHeight,
+    )
     mapSettlements.forEach((settlement, index) => {
-      const gridPoint = grid.points[index]
       annotationLayouts.set(settlement.id, {
-        point: {
-          x: 12 + gridPoint.x,
-          y: baseMapHeight + 22 + gridPoint.row * 36,
-        },
+        point: points[index],
       })
     })
-    annotationRowCount = grid.rows
   }
-  const mapHeight = baseMapHeight + (annotationRowCount > 0 ? 12 + annotationRowCount * 36 : 0)
+  const mapHeight = baseMapHeight
   const selectedSettlement = mapSettlements.find(
     (settlement) => settlement.id === selectedSettlementId,
   ) ?? null
@@ -402,6 +447,28 @@ export function SettlementRelationshipMap({
               )
             })}
           </g>
+
+          {mode === 'circular' && (
+            <g className="settlement-relationship-map__annotation-guides" aria-hidden="true">
+              {mapSettlements.map((settlement) => {
+                const geometry = edgeLayouts.get(settlement.id)
+                const point = annotationLayouts.get(settlement.id)?.point
+                if (!geometry || !point || Math.hypot(point.x - geometry.label.x, point.y - geometry.label.y) < 10) return null
+                const tone = perspectiveMemberId === settlement.fromMemberId
+                  ? 'payable'
+                  : perspectiveMemberId === settlement.toMemberId
+                    ? 'receivable'
+                    : 'neutral'
+                return (
+                  <path
+                    key={settlement.id}
+                    d={`M ${geometry.label.x} ${geometry.label.y} L ${point.x} ${point.y}`}
+                    className={`settlement-relationship-map__annotation-guide is-${tone}`}
+                  />
+                )
+              })}
+            </g>
+          )}
 
           <g className="settlement-relationship-map__nodes">
             {mapMembers.map((member) => {
@@ -545,7 +612,7 @@ export function SettlementRelationshipMap({
       <p className="settlement-relationship-map__legend">
         <span className="is-receivable"><i />受け取る</span>
         <span className="is-payable"><i />支払う</span>
-        <span><i />ほかの精算</span>
+        <span>中立の精算は非表示</span>
       </p>
     </section>
   )
@@ -688,17 +755,20 @@ function AdvanceBar({ side, members, currentMemberId, maxAmount, position }: { s
   )
 }
 
-function PairResult({ settlement, members, currentMemberId, organizer }: { settlement: Settlement; members: Member[]; currentMemberId: string | null; organizer: boolean }) {
+function PairResult({ settlement, members, currentMemberId }: { settlement: Settlement; members: Member[]; currentMemberId: string | null }) {
   const fromName = memberDisplayName(members, settlement.fromMemberId, currentMemberId)
   const toName = memberDisplayName(members, settlement.toMemberId, currentMemberId)
-  const isCurrentPaying = !organizer && currentMemberId === settlement.fromMemberId
-  const isCurrentReceiving = !organizer && currentMemberId === settlement.toMemberId
-  const resultTone = settlement.amount === 0 ? 'even' : isCurrentPaying ? 'pay' : isCurrentReceiving ? 'receive' : 'neutral'
-  const resultLabel = organizer
-    ? `${fromName} → ${toName} に支払う`
-    : isCurrentPaying
-      ? `あなた → ${toName} に支払う`
-      : `${fromName} → あなたが受け取る`
+  const perspective = settlementPerspective(
+    settlement.fromMemberId,
+    settlement.toMemberId,
+    currentMemberId,
+  )
+  const resultTone = settlement.amount === 0 ? 'even' : perspective
+  const resultLabel = perspective === 'pay'
+    ? `あなたが${toName}へ支払う`
+    : perspective === 'receive'
+      ? `${fromName}からあなたが受け取る`
+      : `${fromName}が${toName}へ支払う`
 
   return (
     <div className={`pair-result pair-result--${resultTone}`}>
@@ -714,11 +784,11 @@ function PairResult({ settlement, members, currentMemberId, organizer }: { settl
   )
 }
 
-function PairAdvanceBars({ settlement, members, currentMemberId, organizer }: { settlement: Settlement; members: Member[]; currentMemberId: string | null; organizer: boolean }) {
+function PairAdvanceBars({ settlement, members, currentMemberId }: { settlement: Settlement; members: Member[]; currentMemberId: string | null }) {
   const maxAmount = Math.max(settlement.grossAmount, settlement.offsetAmount, 1)
   const fromSide: BarSide = { memberId: settlement.fromMemberId, amount: settlement.offsetAmount, items: settlement.offsets }
   const toSide: BarSide = { memberId: settlement.toMemberId, amount: settlement.grossAmount, items: settlement.charges }
-  const currentOnRight = !organizer && currentMemberId === toSide.memberId
+  const currentOnRight = currentMemberId === toSide.memberId
   const leftSide = currentOnRight ? toSide : fromSide
   const rightSide = currentOnRight ? fromSide : toSide
   const payerIsLeft = leftSide.memberId === settlement.fromMemberId
@@ -898,7 +968,7 @@ export function SettlementView({
                           <StatusBadge status={settlement.status} amount={settlement.amount} />
                         </header>
                         <div className="pair-settlement-card__summary">
-                          <PairResult settlement={settlement} members={members} currentMemberId={currentMemberId} organizer={organizer} />
+                          <PairResult settlement={settlement} members={members} currentMemberId={currentMemberId} />
                         </div>
                         <details
                           className="pair-settlement-details"
@@ -913,7 +983,7 @@ export function SettlementView({
                         >
                           <summary>比較と内訳を見る</summary>
                           <div className="pair-settlement-details__body">
-                            <PairAdvanceBars settlement={settlement} members={members} currentMemberId={currentMemberId} organizer={organizer} />
+                            <PairAdvanceBars settlement={settlement} members={members} currentMemberId={currentMemberId} />
                             <div className="pair-settlement-card__footer">
                               <SettlementBreakdown settlement={settlement} members={members} currentMemberId={currentMemberId} />
                             </div>

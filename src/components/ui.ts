@@ -148,22 +148,108 @@ export const memberPillStyle = (index: number): CSSProperties => {
   return { color: color.solid, backgroundColor: color.soft, borderColor: color.border }
 }
 
-export function layoutAnnotationGrid(itemWidths: number[], containerWidth: number, horizontalGap = 12) {
+export function layoutAnnotationGrid(
+  itemWidths: number[],
+  preferredPoints: Array<{ x: number; y: number }>,
+  containerWidth: number,
+  containerHeight: number,
+  itemHeight = 26,
+  horizontalGap = 10,
+  verticalGap = 8,
+) {
   if (itemWidths.length === 0) return { columns: 1, rows: 0, cellWidth: containerWidth, points: [] }
   const safeWidth = Math.max(1, containerWidth)
+  const safeHeight = Math.max(itemHeight, containerHeight)
   const maxItemWidth = Math.max(1, ...itemWidths.map((width) => Math.max(1, width)))
   const columns = Math.max(1, Math.floor(safeWidth / (maxItemWidth + horizontalGap)))
   const cellWidth = safeWidth / columns
+  const rowHeight = itemHeight + verticalGap
+  const rows = Math.max(1, Math.floor(safeHeight / rowHeight), Math.ceil(itemWidths.length / columns))
+  const availableCells = Array.from({ length: columns * rows }, (_, index) => ({
+    column: index % columns,
+    row: Math.floor(index / columns),
+    x: cellWidth * (index % columns + 0.5),
+    y: itemHeight / 2 + Math.floor(index / columns) * rowHeight,
+  }))
+  const points = itemWidths.map((_, index) => {
+    const preferred = preferredPoints[index] ?? { x: safeWidth / 2, y: safeHeight / 2 }
+    let closestIndex = 0
+    let closestDistance = Number.POSITIVE_INFINITY
+    availableCells.forEach((cell, cellIndex) => {
+      const distance = (cell.x - preferred.x) ** 2 + (cell.y - preferred.y) ** 2
+      if (distance < closestDistance) {
+        closestDistance = distance
+        closestIndex = cellIndex
+      }
+    })
+    return availableCells.splice(closestIndex, 1)[0]
+  })
   return {
     columns,
-    rows: Math.ceil(itemWidths.length / columns),
+    rows,
     cellWidth,
-    points: itemWidths.map((_, index) => ({
-      column: index % columns,
-      row: Math.floor(index / columns),
-      x: cellWidth * (index % columns + 0.5),
-    })),
+    points,
   }
+}
+
+export function layoutNearbyAnnotations(
+  items: Array<{
+    width: number
+    height: number
+    candidates: Array<{ x: number; y: number }>
+  }>,
+  containerWidth: number,
+  containerHeight: number,
+  gap = 7,
+) {
+  const placed: Array<{ x: number; y: number; width: number; height: number }> = []
+  const safeWidth = Math.max(1, containerWidth)
+  const safeHeight = Math.max(1, containerHeight)
+  const maxWidth = Math.max(1, ...items.map((item) => item.width))
+  const maxHeight = Math.max(1, ...items.map((item) => item.height))
+  const columns = Math.max(1, Math.floor((safeWidth - gap) / (maxWidth + gap)))
+  const rows = Math.max(1, Math.ceil(items.length / columns), Math.floor((safeHeight - gap) / (maxHeight + gap)))
+  const cellWidth = safeWidth / columns
+  const cellHeight = safeHeight / rows
+  const fallbackCells = Array.from({ length: columns * rows }, (_, index) => ({
+    x: cellWidth * (index % columns + 0.5),
+    y: cellHeight * (Math.floor(index / columns) + 0.5),
+  }))
+
+  const overlaps = (candidate: { x: number; y: number }, item: { width: number; height: number }) =>
+    placed.some((box) =>
+      Math.abs(candidate.x - box.x) < (item.width + box.width) / 2 + gap &&
+      Math.abs(candidate.y - box.y) < (item.height + box.height) / 2 + gap,
+    )
+  const inside = (candidate: { x: number; y: number }, item: { width: number; height: number }) =>
+    candidate.x - item.width / 2 >= gap &&
+    candidate.x + item.width / 2 <= safeWidth - gap &&
+    candidate.y - item.height / 2 >= gap &&
+    candidate.y + item.height / 2 <= safeHeight - gap
+
+  return items.map((item) => {
+    const preferred = item.candidates[0] ?? { x: safeWidth / 2, y: safeHeight / 2 }
+    const orderedFallbacks = [...fallbackCells].sort(
+      (left, right) =>
+        (left.x - preferred.x) ** 2 + (left.y - preferred.y) ** 2 -
+        ((right.x - preferred.x) ** 2 + (right.y - preferred.y) ** 2),
+    )
+    const point = [...item.candidates, ...orderedFallbacks].find(
+      (candidate) => inside(candidate, item) && !overlaps(candidate, item),
+    ) ?? preferred
+    placed.push({ ...point, width: item.width, height: item.height })
+    return point
+  })
+}
+
+export function settlementPerspective(
+  fromMemberId: string,
+  toMemberId: string,
+  currentMemberId: string | null,
+) {
+  if (currentMemberId === fromMemberId) return 'pay' as const
+  if (currentMemberId === toMemberId) return 'receive' as const
+  return 'neutral' as const
 }
 
 export const SETTLEMENT_STATUS_META: Record<

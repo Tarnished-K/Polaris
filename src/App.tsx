@@ -26,7 +26,6 @@ export function App() {
     expenses,
     displaySettlements,
     totalSpent,
-    currentMemberShare,
     draftExpenseCount,
     view,
     setView,
@@ -166,7 +165,6 @@ export function App() {
           currentMemberId={currentMemberId}
           expenses={expenses}
           settlements={displaySettlements}
-          currentMemberShare={currentMemberShare}
           onOpenExpenses={() => setView('home')}
           onOpenSettlements={() => setView('settlement')}
           onOpenPayment={() => setView('payment')}

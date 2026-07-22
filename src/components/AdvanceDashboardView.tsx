@@ -11,7 +11,6 @@ interface AdvanceDashboardViewProps {
   currentMemberId: string | null
   expenses: Expense[]
   settlements: Settlement[]
-  currentMemberShare: number
   onOpenExpenses: () => void
   onOpenSettlements: () => void
   onOpenPayment: () => void
@@ -162,7 +161,6 @@ export function AdvanceDashboardView({
   currentMemberId,
   expenses,
   settlements,
-  currentMemberShare,
   onOpenExpenses,
   onOpenSettlements,
   onOpenPayment,
@@ -251,7 +249,6 @@ export function AdvanceDashboardView({
         </div>
 
         <section className="dashboard-metrics" aria-label="立替の集計">
-          <article><span>確定済み支出でのあなたの負担</span><strong>{formatYen(currentMemberShare)}</strong><small>支払い済みの精算分を除く</small></article>
           <article><span>自分が立て替え中</span><strong>{formatYen(summary.outgoingTotal)}</strong><small>ほかの参加者の負担分</small></article>
           <article><span>立て替えてもらった</span><strong>{formatYen(summary.incomingTotal)}</strong><small>自分が負担する分</small></article>
           <button type="button" className={`dashboard-net-card ${net >= 0 ? 'is-receivable' : 'is-payable'}`} onClick={onOpenSettlements}>

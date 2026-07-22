@@ -3,7 +3,6 @@ import type { Dispatch, SetStateAction } from 'react'
 
 import { createDemoData, createFourPersonDemoData } from '../data/demo'
 import {
-  paidCounterpartyIds,
   calculateBalances,
   generatePairwiseSettlements,
   splitExpense,
@@ -50,7 +49,6 @@ export interface WarikanAppState {
   displaySettlements: Settlement[]
   balances: Record<string, number>
   totalSpent: number
-  currentMemberShare: number
   draftExpenseCount: number
   view: AppView
   setView: Dispatch<SetStateAction<AppView>>
@@ -282,23 +280,6 @@ export function useWarikanApp(): WarikanAppState {
     () => state.expenses.reduce((total, expense) => total + expense.amount, 0),
     [state.expenses],
   )
-
-  const currentMemberShare = useMemo(() => {
-    if (!state.currentMemberId) return 0
-
-    const paidPairMemberIds = paidCounterpartyIds(state.settlements, state.currentMemberId)
-
-    return finalizedExpenses.reduce(
-      (total, expense) => {
-        const burden = splitExpense(expense)[state.currentMemberId ?? ''] ?? 0
-        if (expense.payerMemberId !== state.currentMemberId && paidPairMemberIds.has(expense.payerMemberId)) {
-          return total
-        }
-        return total + burden
-      },
-      0,
-    )
-  }, [finalizedExpenses, state.currentMemberId, state.settlements])
 
   const draftExpenseCount = useMemo(
     () => state.expenses.filter((expense) => expense.status === 'draft').length,
@@ -747,7 +728,6 @@ export function useWarikanApp(): WarikanAppState {
     displaySettlements,
     balances,
     totalSpent,
-    currentMemberShare,
     draftExpenseCount,
     view: state.view,
     setView,

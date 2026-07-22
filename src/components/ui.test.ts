@@ -6,8 +6,10 @@ import {
   amountToStrokeWidth,
   getSettlementRelationshipMapMode,
   layoutAnnotationGrid,
+  layoutNearbyAnnotations,
   memberColor,
   memberDisplayName,
+  settlementPerspective,
 } from './ui'
 
 describe('allocatePercentages', () => {
@@ -81,17 +83,58 @@ describe('getSettlementRelationshipMapMode', () => {
 describe('layoutAnnotationGrid', () => {
   it('箱根旅行の15組を重ならないセルへ配置する', () => {
     const widths = [142, 131, 136, 128, 140, 135, 129, 141, 132, 138, 127, 139, 134, 130, 137]
-    const layout = layoutAnnotationGrid(widths, 656)
+    const preferredPoints = widths.map((_, index) => ({
+      x: 120 + (index % 5) * 95,
+      y: 90 + Math.floor(index / 5) * 115,
+    }))
+    const layout = layoutAnnotationGrid(widths, preferredPoints, 656, 490)
 
     expect(layout.rows).toBeGreaterThan(1)
     for (let left = 0; left < widths.length; left += 1) {
       for (let right = left + 1; right < widths.length; right += 1) {
         const a = layout.points[left]
         const b = layout.points[right]
-        const sameRow = a.row === b.row
         const horizontalOverlap = Math.abs(a.x - b.x) < (widths[left] + widths[right]) / 2
-        expect(sameRow && horizontalOverlap).toBe(false)
+        const verticalOverlap = Math.abs(a.y - b.y) < 26
+        expect(horizontalOverlap && verticalOverlap).toBe(false)
       }
     }
+  })
+
+  it('各金額を希望する矢印位置に最も近い未使用セルへ置く', () => {
+    const layout = layoutAnnotationGrid([80, 80], [{ x: 80, y: 80 }, { x: 560, y: 360 }], 656, 490)
+    expect(Math.hypot(layout.points[0].x - 80, layout.points[0].y - 80)).toBeLessThan(70)
+    expect(Math.hypot(layout.points[1].x - 560, layout.points[1].y - 360)).toBeLessThan(70)
+  })
+})
+
+describe('layoutNearbyAnnotations', () => {
+  it('矢印付近を優先しながら金額チップを重ねない', () => {
+    const items = Array.from({ length: 5 }, (_, index) => ({
+      width: 82,
+      height: 26,
+      candidates: [
+        { x: 300 + index * 4, y: 220 + index * 3 },
+        { x: 180 + index * 82, y: 180 + (index % 2) * 52 },
+      ],
+    }))
+    const points = layoutNearbyAnnotations(items, 680, 500)
+
+    for (let left = 0; left < points.length; left += 1) {
+      for (let right = left + 1; right < points.length; right += 1) {
+        const horizontalOverlap = Math.abs(points[left].x - points[right].x) < 82 + 7
+        const verticalOverlap = Math.abs(points[left].y - points[right].y) < 26 + 7
+        expect(horizontalOverlap && verticalOverlap).toBe(false)
+      }
+    }
+    expect(Math.hypot(points[0].x - 300, points[0].y - 220)).toBeLessThan(1)
+  })
+})
+
+describe('settlementPerspective', () => {
+  it('幹事かどうかに関係なく現在メンバーの支払・受取方向を判定する', () => {
+    expect(settlementPerspective('organizer', 'mina', 'organizer')).toBe('pay')
+    expect(settlementPerspective('mina', 'organizer', 'organizer')).toBe('receive')
+    expect(settlementPerspective('mina', 'kenta', 'organizer')).toBe('neutral')
   })
 })
