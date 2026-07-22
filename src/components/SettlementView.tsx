@@ -204,6 +204,26 @@ function PairAdvanceBars({ settlement, members, currentMemberId, organizer }: { 
   )
 }
 
+function comparisonTitle({
+  settlement,
+  members,
+  currentMemberId,
+}: {
+  settlement: Settlement
+  members: Member[]
+  currentMemberId: string | null
+}) {
+  const currentMemberIsInPair = currentMemberId === settlement.fromMemberId || currentMemberId === settlement.toMemberId
+  if (currentMemberId && currentMemberIsInPair) {
+    const counterpartId = settlement.fromMemberId === currentMemberId
+      ? settlement.toMemberId
+      : settlement.fromMemberId
+    return `${memberName(members, counterpartId)}との比較`
+  }
+
+  return `${memberName(members, settlement.fromMemberId)}と${memberName(members, settlement.toMemberId)}の比較`
+}
+
 export function SettlementView({
   event,
   members,
@@ -295,7 +315,7 @@ export function SettlementView({
                   return (
                   <article className="pair-settlement-card" key={settlement.id}>
                     <header className="pair-settlement-card__header">
-                      <strong>相手ごとの立替比較</strong>
+                      <strong>{comparisonTitle({ settlement, members, currentMemberId })}</strong>
                       <StatusBadge status={settlement.status} amount={settlement.amount} />
                     </header>
                     <PairAdvanceBars settlement={settlement} members={members} currentMemberId={currentMemberId} organizer={organizer} />

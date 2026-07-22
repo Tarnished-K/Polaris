@@ -60,7 +60,7 @@ export function EventHeader({ event, members, activeTab, onTabChange, onOpenSett
         <button type="button" className="header-reset-button" onClick={onReset}><span aria-hidden="true">↺</span><b>最初から</b></button>
         <button type="button" className="share-button" onClick={copyShareUrl}>
           <span aria-hidden="true">⧉</span>
-          {copyState === 'done' ? 'コピーしました' : copyState === 'error' ? 'コピーできませんでした' : '共有リンクをコピー'}
+          <b>{copyState === 'done' ? 'コピーしました' : copyState === 'error' ? 'コピーできませんでした' : '共有リンクをコピー'}</b>
         </button>
       </div>
     </header>
