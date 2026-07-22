@@ -3073,7 +3073,7 @@ p {
 .pair-bars__difference-guide i {
   position: absolute;
   top: calc(var(--guide-offset) - 20px);
-  left: 50%;
+  right: 4%;
   padding: 2px 7px;
   border-radius: 999px;
   background: var(--card);
@@ -3081,7 +3081,6 @@ p {
   font-size: 0.62rem;
   font-weight: 850;
   font-style: normal;
-  transform: translateX(-50%);
 }
 
 .advance-bar-side {
