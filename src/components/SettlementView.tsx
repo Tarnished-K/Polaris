@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type CSSProperties } from 'react'
 
 import type {
   Expense,
@@ -77,8 +77,7 @@ function SettlementBreakdown({
   currentMemberId: string | null
 }) {
   return (
-    <details className="settlement-breakdown">
-      <summary>精算の内訳を見る</summary>
+    <div className="settlement-breakdown" aria-label="精算の内訳">
       <div className="settlement-breakdown__body">
         <section>
           <h4>
@@ -117,7 +116,7 @@ function SettlementBreakdown({
           <strong>{formatYen(settlement.amount)}</strong>
         </div>
       </div>
-    </details>
+    </div>
   )
 }
 
@@ -166,15 +165,9 @@ function AdvanceBar({ side, members, currentMemberId, maxAmount, position }: { s
   )
 }
 
-function PairAdvanceBars({ settlement, members, currentMemberId, organizer }: { settlement: Settlement; members: Member[]; currentMemberId: string | null; organizer: boolean }) {
+function PairResult({ settlement, members, currentMemberId, organizer }: { settlement: Settlement; members: Member[]; currentMemberId: string | null; organizer: boolean }) {
   const fromName = memberDisplayName(members, settlement.fromMemberId, currentMemberId)
   const toName = memberDisplayName(members, settlement.toMemberId, currentMemberId)
-  const maxAmount = Math.max(settlement.grossAmount, settlement.offsetAmount, 1)
-  const fromSide: BarSide = { memberId: settlement.fromMemberId, amount: settlement.offsetAmount, items: settlement.offsets }
-  const toSide: BarSide = { memberId: settlement.toMemberId, amount: settlement.grossAmount, items: settlement.charges }
-  const currentOnRight = !organizer && currentMemberId === toSide.memberId
-  const leftSide = currentOnRight ? toSide : fromSide
-  const rightSide = currentOnRight ? fromSide : toSide
   const isCurrentPaying = !organizer && currentMemberId === settlement.fromMemberId
   const isCurrentReceiving = !organizer && currentMemberId === settlement.toMemberId
   const resultTone = settlement.amount === 0 ? 'even' : isCurrentPaying ? 'pay' : isCurrentReceiving ? 'receive' : 'neutral'
@@ -185,23 +178,58 @@ function PairAdvanceBars({ settlement, members, currentMemberId, organizer }: { 
       : `${fromName} → あなたが受け取る`
 
   return (
+    <div className={`pair-result pair-result--${resultTone}`}>
+      {settlement.amount === 0 ? (
+        <><strong>差額なし</strong><span>お互いの立て替えが相殺されています</span></>
+      ) : (
+        <>
+          <span className="pair-result__direction">{resultLabel}</span>
+          <strong>{formatYen(settlement.amount)}</strong>
+          <small>{formatYen(settlement.grossAmount)} − {formatYen(settlement.offsetAmount)}</small>
+        </>
+      )}
+    </div>
+  )
+}
+
+function PairAdvanceBars({ settlement, members, currentMemberId, organizer }: { settlement: Settlement; members: Member[]; currentMemberId: string | null; organizer: boolean }) {
+  const maxAmount = Math.max(settlement.grossAmount, settlement.offsetAmount, 1)
+  const fromSide: BarSide = { memberId: settlement.fromMemberId, amount: settlement.offsetAmount, items: settlement.offsets }
+  const toSide: BarSide = { memberId: settlement.toMemberId, amount: settlement.grossAmount, items: settlement.charges }
+  const currentOnRight = !organizer && currentMemberId === toSide.memberId
+  const leftSide = currentOnRight ? toSide : fromSide
+  const rightSide = currentOnRight ? fromSide : toSide
+  const payerIsLeft = leftSide.memberId === settlement.fromMemberId
+  const paymentArrow = payerIsLeft ? '→' : '←'
+  const lowAmount = Math.min(leftSide.amount, rightSide.amount)
+  const guideOffset = `${(1 - lowAmount / maxAmount) * 100}%`
+  const leftName = memberDisplayName(members, leftSide.memberId, currentMemberId)
+  const rightName = memberDisplayName(members, rightSide.memberId, currentMemberId)
+  const differenceLabel = settlement.amount === 0
+    ? '差額なし、±0円'
+    : `差額${formatYen(settlement.amount)}、${payerIsLeft ? leftName : rightName}から${payerIsLeft ? rightName : leftName}へ支払う`
+
+  return (
     <div className="pair-comparison">
-      <div className={`pair-result pair-result--${resultTone}`}>
-        {settlement.amount === 0 ? (
-          <><strong>差額なし</strong><span>お互いの立て替えが相殺されています</span></>
-        ) : (
-          <>
-            <span className="pair-result__direction">{resultLabel}</span>
-            <strong>{formatYen(settlement.amount)}</strong>
-            <small>{formatYen(settlement.grossAmount)} − {formatYen(settlement.offsetAmount)}</small>
-          </>
-        )}
-      </div>
-      <p className="pair-comparison__caption">同じ基準で、相手の分を立て替えた金額を比較</p>
       <div className="pair-bars">
         <AdvanceBar side={leftSide} members={members} currentMemberId={currentMemberId} maxAmount={maxAmount} position="left" />
-        <span className="pair-bars__versus">比較</span>
+        <span className="pair-bars__versus" aria-label={differenceLabel}>
+          {settlement.amount === 0 ? (
+            <strong>±0</strong>
+          ) : (
+            <><small>差</small><strong>{formatYen(settlement.amount)}</strong><b aria-hidden="true">{paymentArrow}</b></>
+          )}
+        </span>
         <AdvanceBar side={rightSide} members={members} currentMemberId={currentMemberId} maxAmount={maxAmount} position="right" />
+        {lowAmount > 0 && (
+          <span
+            className="pair-bars__difference-guide"
+            style={{ '--guide-offset': guideOffset } as CSSProperties}
+            aria-hidden="true"
+          >
+            <i>超過分</i>
+          </span>
+        )}
       </div>
     </div>
   )
@@ -307,6 +335,7 @@ export function SettlementView({
               </div>
               <span className="count-label">完了 {completedCount} / {visibleSettlements.length}</span>
             </div>
+            <p className="pair-settlements__caption">同じ基準で、相手の分を立て替えた金額を比較しています。</p>
 
             <div className="settlement-list">
               {sortedSettlements.length === 0 ? (
@@ -321,10 +350,18 @@ export function SettlementView({
                       <strong>{comparisonTitle({ settlement, members, currentMemberId })}</strong>
                       <StatusBadge status={settlement.status} amount={settlement.amount} />
                     </header>
-                    <PairAdvanceBars settlement={settlement} members={members} currentMemberId={currentMemberId} organizer={organizer} />
-                    <div className="pair-settlement-card__footer">
-                      <SettlementBreakdown settlement={settlement} members={members} currentMemberId={currentMemberId} />
+                    <div className="pair-settlement-card__summary">
+                      <PairResult settlement={settlement} members={members} currentMemberId={currentMemberId} organizer={organizer} />
                     </div>
+                    <details className="pair-settlement-details">
+                      <summary>比較と内訳を見る</summary>
+                      <div className="pair-settlement-details__body">
+                        <PairAdvanceBars settlement={settlement} members={members} currentMemberId={currentMemberId} organizer={organizer} />
+                        <div className="pair-settlement-card__footer">
+                          <SettlementBreakdown settlement={settlement} members={members} currentMemberId={currentMemberId} />
+                        </div>
+                      </div>
+                    </details>
                   </article>
                   )
                 })

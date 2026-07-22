@@ -2175,25 +2175,17 @@ p {
 }
 
 .settlement-breakdown {
-  margin-top: 12px;
+  margin-top: 0;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.72);
-}
-
-.settlement-breakdown summary {
-  padding: 11px 13px;
-  color: var(--accent-dark);
-  font-size: 0.9rem;
-  font-weight: 800;
-  cursor: pointer;
 }
 
 .settlement-breakdown__body {
   display: flex;
   flex-direction: column;
   gap: 15px;
-  padding: 0 13px 13px;
+  padding: 13px;
 }
 
 .settlement-breakdown h4 {
@@ -2602,6 +2594,14 @@ p {
   align-items: center;
 }
 
+.pair-settlements__caption {
+  margin: -9px 0 14px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
 .pair-settlements .settlement-list {
   display: flex;
   flex-direction: column;
@@ -2629,6 +2629,37 @@ p {
 }
 
 .pair-settlement-card__header > strong { color: var(--subtle); font-size: 0.94rem; font-weight: 850; }
+
+.pair-settlement-card__summary {
+  padding: 11px 18px 12px;
+  background: linear-gradient(180deg, var(--card), var(--canvas));
+}
+
+.pair-settlement-details {
+  border-top: 1px solid var(--border);
+}
+
+.pair-settlement-details > summary {
+  display: flex;
+  min-height: 43px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 9px 18px;
+  color: var(--accent-dark);
+  font-size: 0.82rem;
+  font-weight: 850;
+  list-style: none;
+  cursor: pointer;
+}
+
+.pair-settlement-details > summary::-webkit-details-marker { display: none; }
+.pair-settlement-details > summary::after { content: '＋'; font-size: 0.94rem; }
+.pair-settlement-details[open] > summary::after { content: '−'; }
+.pair-settlement-details > summary:hover,
+.pair-settlement-details > summary:focus-visible { background: var(--canvas); }
+.pair-settlement-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.pair-settlement-details[open] .pair-settlement-details__body { animation: detail-open 190ms ease both; }
 
 .pair-member-names {
   display: flex;
@@ -2810,7 +2841,7 @@ p {
   align-items: center;
   justify-content: center;
   gap: 3px 14px;
-  padding: 14px 18px;
+  padding: 10px 16px;
   border: 1px solid rgba(103, 83, 59, 0.13);
   border-radius: 16px;
   background: #fff8f1;
@@ -2853,34 +2884,72 @@ p {
   background: linear-gradient(180deg, #fdfcf9, #f8f6f1);
 }
 
-.pair-comparison__caption {
-  margin: 15px 0 13px;
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 750;
-  text-align: center;
-}
-
 .pair-bars {
+  --pair-track-height: 150px;
+  --pair-track-top: 50px;
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 62px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 86px minmax(0, 1fr);
   align-items: center;
   gap: 2px;
 }
 
 .pair-bars__versus {
-  display: inline-flex;
-  width: 56px;
-  height: 32px;
+  position: relative;
+  z-index: 3;
+  display: grid;
+  width: 80px;
+  min-height: 58px;
   align-items: center;
   justify-content: center;
+  gap: 0;
   margin-top: 12px;
-  border: 1px solid #ddd4c9;
-  border-radius: 999px;
-  background: #fff;
+  padding: 6px 5px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--card);
   color: var(--subtle);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 900;
+  text-align: center;
+}
+
+.pair-bars__versus small { color: var(--muted); font-size: 0.64rem; }
+.pair-bars__versus strong { color: var(--ink); font-size: 0.8rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pair-bars__versus b { color: var(--accent-dark); font-size: 1rem; line-height: 1; }
+
+.pair-bars__difference-guide {
+  position: absolute;
+  z-index: 2;
+  top: var(--pair-track-top);
+  right: 3%;
+  left: 3%;
+  height: var(--pair-track-height);
+  pointer-events: none;
+}
+
+.pair-bars__difference-guide::before {
+  position: absolute;
+  top: var(--guide-offset);
+  right: 0;
+  left: 0;
+  border-top: 2px dashed var(--accent-dark);
+  content: '';
+  opacity: 0.52;
+}
+
+.pair-bars__difference-guide i {
+  position: absolute;
+  top: calc(var(--guide-offset) - 20px);
+  left: 50%;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--accent-dark);
+  font-size: 0.62rem;
+  font-weight: 850;
+  font-style: normal;
+  transform: translateX(-50%);
 }
 
 .advance-bar-side {
@@ -3022,7 +3091,7 @@ p {
   }
 
   .pair-settlement-card__header {
-    padding: 20px 25px 16px;
+    padding: 15px 25px 11px;
   }
 
   .pair-settlement-card__header > div > span {
@@ -3037,20 +3106,16 @@ p {
     padding: 24px 30px 22px;
   }
 
-  .pair-comparison__caption {
-    margin-bottom: 18px;
-    font-size: 0.78rem;
-  }
-
   .pair-bars {
-    grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
+    --pair-track-height: 190px;
+    --pair-track-top: 58px;
+    grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1fr);
     gap: 6px;
   }
 
   .pair-bars__versus {
-    width: 64px;
-    height: 36px;
-    font-size: 0.82rem;
+    width: 88px;
+    min-height: 64px;
   }
 
   .advance-bar-amount { min-height: 50px; }
@@ -3094,10 +3159,7 @@ p {
     font-size: 0.74rem;
   }
 
-  .pair-result {
-    margin-top: 5px;
-    padding: 14px 18px;
-  }
+  .pair-result { padding: 10px 18px; }
 
   .pair-result__direction { font-size: 1.14rem; }
   .pair-result > strong { font-size: 1.55rem; }
@@ -3107,7 +3169,6 @@ p {
     padding: 15px 25px 20px;
   }
 
-  .settlement-breakdown summary { font-size: 1rem; font-weight: 800; }
 }
 
 @media (max-width: 1440px) {
@@ -3575,8 +3636,9 @@ p {
   .pair-result { flex-direction: column; gap: 3px; }
   .balance-scale__hanger i { width: 58px; }
   .pair-comparison { padding-right: 8px; padding-left: 8px; }
-  .pair-bars { grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr); gap: 2px; }
-  .pair-bars__versus { width: 44px; height: 30px; margin-top: 12px; font-size: 0.7rem; }
+  .pair-bars { --pair-track-height: 132px; --pair-track-top: 45px; grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr); gap: 2px; }
+  .pair-bars__versus { width: 60px; min-height: 56px; margin-top: 12px; }
+  .pair-bars__versus strong { font-size: 0.68rem; }
   .advance-bar-column { gap: 6px; }
   .advance-bar-amount { min-height: 39px; }
   .advance-bar-amount strong { font-size: 0.98rem; }
