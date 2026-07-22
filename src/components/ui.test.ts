@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Member } from '../domain/types'
-import { allocatePercentages, memberColor, memberDisplayName } from './ui'
+import {
+  allocatePercentages,
+  amountToStrokeWidth,
+  getSettlementRelationshipMapMode,
+  layoutAnnotationGrid,
+  memberColor,
+  memberDisplayName,
+} from './ui'
 
 describe('allocatePercentages', () => {
   it('最大剰余法で合計を100%にする', () => {
@@ -45,5 +52,46 @@ describe('memberDisplayName', () => {
 
   it('「あなた」という名前だけで参加者を幹事扱いしない', () => {
     expect(memberDisplayName(members, 'named-you', 'mina')).toBe('あなた')
+  })
+})
+
+describe('amountToStrokeWidth', () => {
+  it('最大金額を5px、0以下を最小の1.5pxにする', () => {
+    expect(amountToStrokeWidth(10_000, 10_000)).toBe(5)
+    expect(amountToStrokeWidth(0, 10_000)).toBe(1.5)
+    expect(amountToStrokeWidth(-1, 10_000)).toBe(1.5)
+  })
+
+  it('平方根補間で金額差を緩和し、最大幅を超えない', () => {
+    expect(amountToStrokeWidth(2_500, 10_000)).toBeCloseTo(3.25)
+    expect(amountToStrokeWidth(20_000, 10_000)).toBe(5)
+    expect(amountToStrokeWidth(Number.NaN, 10_000)).toBe(1.5)
+  })
+})
+
+describe('getSettlementRelationshipMapMode', () => {
+  it('6人までは円形、7人以上はエゴセントリック表示にする', () => {
+    expect(getSettlementRelationshipMapMode(0)).toBe('circular')
+    expect(getSettlementRelationshipMapMode(6)).toBe('circular')
+    expect(getSettlementRelationshipMapMode(7)).toBe('egocentric')
+    expect(getSettlementRelationshipMapMode(50)).toBe('egocentric')
+  })
+})
+
+describe('layoutAnnotationGrid', () => {
+  it('箱根旅行の15組を重ならないセルへ配置する', () => {
+    const widths = [142, 131, 136, 128, 140, 135, 129, 141, 132, 138, 127, 139, 134, 130, 137]
+    const layout = layoutAnnotationGrid(widths, 656)
+
+    expect(layout.rows).toBeGreaterThan(1)
+    for (let left = 0; left < widths.length; left += 1) {
+      for (let right = left + 1; right < widths.length; right += 1) {
+        const a = layout.points[left]
+        const b = layout.points[right]
+        const sameRow = a.row === b.row
+        const horizontalOverlap = Math.abs(a.x - b.x) < (widths[left] + widths[right]) / 2
+        expect(sameRow && horizontalOverlap).toBe(false)
+      }
+    }
   })
 })

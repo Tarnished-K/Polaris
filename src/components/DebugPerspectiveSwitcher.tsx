@@ -6,9 +6,10 @@ interface DebugPerspectiveSwitcherProps {
   members: Member[]
   currentMemberId: string | null
   onChange: (memberId: string) => void
+  onReset: () => void
 }
 
-export function DebugPerspectiveSwitcher({ members, currentMemberId, onChange }: DebugPerspectiveSwitcherProps) {
+export function DebugPerspectiveSwitcher({ members, currentMemberId, onChange, onReset }: DebugPerspectiveSwitcherProps) {
   const [expanded, setExpanded] = useState(false)
   const current = members.find((member) => member.id === currentMemberId)
   return (
@@ -34,6 +35,15 @@ export function DebugPerspectiveSwitcher({ members, currentMemberId, onChange }:
             <option value={member.id} key={member.id}>{member.name}（{member.isOrganizer ? '幹事' : '参加者'}）</option>
           ))}
         </select>
+        <button
+          type="button"
+          className="debug-perspective__reset"
+          onClick={() => {
+            if (window.confirm('この端末のイベントデータを消して、最初からやり直しますか？')) onReset()
+          }}
+        >
+          <span aria-hidden="true">↺</span>最初から
+        </button>
       </div>
     </aside>
   )

@@ -1,7 +1,7 @@
 import { useMemo, useState, type CSSProperties } from 'react'
 
-import { splitExpense } from '../domain/settlement'
-import { CATEGORY_META, type Expense, type Member, type WarikanEvent } from '../domain/types'
+import { paidCounterpartyIds, splitExpense } from '../domain/settlement'
+import { CATEGORY_META, type Expense, type Member, type Settlement, type WarikanEvent } from '../domain/types'
 import { EventHeader } from './EventHeader'
 import { allocatePercentages, formatYen, memberColor, memberName } from './ui'
 
@@ -10,10 +10,12 @@ interface AdvanceDashboardViewProps {
   members: Member[]
   currentMemberId: string | null
   expenses: Expense[]
+  settlements: Settlement[]
+  currentMemberShare: number
   onOpenExpenses: () => void
   onOpenSettlements: () => void
+  onOpenPayment: () => void
   onOpenSettings: () => void
-  onReset: () => void
 }
 
 interface ChartItem {
@@ -50,6 +52,22 @@ function percentageLabel(amount: number, percentage: number) {
   return amount > 0 && percentage === 0 ? '1%未満' : `${percentage}%`
 }
 
+function pieAnnotationPositions(items: ChartItem[], total: number) {
+  let startAngle = 0
+
+  return items.map((item) => {
+    const sweepAngle = total > 0 ? (item.amount / total) * 360 : 0
+    const middleAngle = startAngle + sweepAngle / 2
+    const radians = (middleAngle * Math.PI) / 180
+    startAngle += sweepAngle
+
+    return {
+      left: `${50 + Math.sin(radians) * 36}%`,
+      top: `${50 - Math.cos(radians) * 36}%`,
+    }
+  })
+}
+
 function ChartCard({
   datasets,
   breakdown,
@@ -69,6 +87,7 @@ function ChartCard({
   const sortedItems = [...items].sort((left, right) => right.amount - left.amount)
   const maxAmount = Math.max(...sortedItems.map((item) => item.amount), 1)
   const percentages = allocatePercentages(sortedItems.map((item) => item.amount))
+  const pieAnnotations = pieAnnotationPositions(sortedItems, total)
 
   return (
     <section className="dashboard-chart-card" style={{ '--chart-delay': `${animationIndex * 90}ms` } as CSSProperties}>
@@ -110,6 +129,13 @@ function ChartCard({
             <>
               <div className="dashboard-pie-chart__donut" aria-hidden="true">
                 <div className="dashboard-pie-chart__visual" style={{ background: pieGradient(sortedItems, total) }} />
+                <div className="dashboard-pie-chart__annotations">
+                  {sortedItems.map((item, index) => (
+                    <span key={item.id} style={{ ...pieAnnotations[index], borderColor: item.color }}>
+                      {percentageLabel(item.amount, percentages[index])}
+                    </span>
+                  ))}
+                </div>
                 <div className="dashboard-pie-chart__center"><span>合計</span><strong>{formatYen(total)}</strong></div>
               </div>
               <div className="dashboard-pie-chart__legend">
@@ -135,10 +161,12 @@ export function AdvanceDashboardView({
   members,
   currentMemberId,
   expenses,
+  settlements,
+  currentMemberShare,
   onOpenExpenses,
   onOpenSettlements,
+  onOpenPayment,
   onOpenSettings,
-  onReset,
 }: AdvanceDashboardViewProps) {
   const [chartMode, setChartMode] = useState<ChartMode>('bar')
   const [outgoingBreakdown, setOutgoingBreakdown] = useState<BreakdownMode>('expense')
@@ -150,13 +178,14 @@ export function AdvanceDashboardView({
     const incomingPayers = new Map<string, number>()
     let outgoingTotal = 0
     let incomingTotal = 0
+    const paidPairMemberIds = paidCounterpartyIds(settlements, currentMemberId)
 
     if (currentMemberId) {
       for (const expense of expenses.filter((item) => item.status === 'finalized')) {
         const burdens = splitExpense(expense)
         if (expense.payerMemberId === currentMemberId) {
           const advanced = Object.entries(burdens).reduce((sum, [memberId, amount]) => {
-            if (memberId === currentMemberId || amount <= 0) return sum
+            if (memberId === currentMemberId || amount <= 0 || paidPairMemberIds.has(memberId)) return sum
             outgoingMembers.set(memberId, (outgoingMembers.get(memberId) ?? 0) + amount)
             return sum + amount
           }, 0)
@@ -166,7 +195,7 @@ export function AdvanceDashboardView({
           }
         } else {
           const received = burdens[currentMemberId] ?? 0
-          if (received > 0) {
+          if (received > 0 && !paidPairMemberIds.has(expense.payerMemberId)) {
             incomingTotal += received
             incomingPayers.set(expense.payerMemberId, (incomingPayers.get(expense.payerMemberId) ?? 0) + received)
             incomingByExpense.push({ id: expense.id, label: expense.title, amount: received, color: CATEGORY_META[expense.category].color })
@@ -193,7 +222,7 @@ export function AdvanceDashboardView({
       incomingTotal,
       draftCount: expenses.filter((expense) => expense.status === 'draft' && (expense.payerMemberId === currentMemberId || expense.targetMemberIds.includes(currentMemberId ?? ''))).length,
     }
-  }, [currentMemberId, expenses, members])
+  }, [currentMemberId, expenses, members, settlements])
 
   const currentName = memberName(members, currentMemberId ?? '')
   const organizer = Boolean(members.find((member) => member.id === currentMemberId)?.isOrganizer)
@@ -205,9 +234,8 @@ export function AdvanceDashboardView({
         event={event}
         members={members}
         activeTab="dashboard"
-        onTabChange={(tab) => tab === 'expenses' ? onOpenExpenses() : tab === 'settlements' && onOpenSettlements()}
+        onTabChange={(tab) => tab === 'expenses' ? onOpenExpenses() : tab === 'settlements' ? onOpenSettlements() : tab === 'payment' && onOpenPayment()}
         onOpenSettings={organizer ? onOpenSettings : undefined}
-        onReset={onReset}
       />
 
       <main className="advance-dashboard-layout">
@@ -223,6 +251,7 @@ export function AdvanceDashboardView({
         </div>
 
         <section className="dashboard-metrics" aria-label="立替の集計">
+          <article><span>確定済み支出でのあなたの負担</span><strong>{formatYen(currentMemberShare)}</strong><small>支払い済みの精算分を除く</small></article>
           <article><span>自分が立て替え中</span><strong>{formatYen(summary.outgoingTotal)}</strong><small>ほかの参加者の負担分</small></article>
           <article><span>立て替えてもらった</span><strong>{formatYen(summary.incomingTotal)}</strong><small>自分が負担する分</small></article>
           <button type="button" className={`dashboard-net-card ${net >= 0 ? 'is-receivable' : 'is-payable'}`} onClick={onOpenSettlements}>

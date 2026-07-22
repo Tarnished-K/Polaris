@@ -27,6 +27,28 @@ export const allocatePercentages = (amounts: number[]) => {
   return allocated
 }
 
+export const SETTLEMENT_RELATIONSHIP_MAP_MAX_MEMBERS = 6
+
+export type SettlementRelationshipMapMode = 'circular' | 'egocentric'
+
+/** Keeps small groups readable as a whole and large groups centered on one member. */
+export const getSettlementRelationshipMapMode = (
+  memberCount: number,
+): SettlementRelationshipMapMode =>
+  memberCount <= SETTLEMENT_RELATIONSHIP_MAP_MAX_MEMBERS ? 'circular' : 'egocentric'
+
+/** Maps settlement amounts to a restrained 1.5–5px visual weight. */
+export const amountToStrokeWidth = (amount: number, maxAmount: number) => {
+  const minimumWidth = 1.5
+  const maximumWidth = 5
+  if (!Number.isFinite(amount) || !Number.isFinite(maxAmount) || amount <= 0 || maxAmount <= 0) {
+    return minimumWidth
+  }
+
+  const normalizedAmount = Math.min(amount, maxAmount) / maxAmount
+  return minimumWidth + Math.sqrt(normalizedAmount) * (maximumWidth - minimumWidth)
+}
+
 const parseDate = (value: string) => {
   const [year, month, day] = value.split('-').map(Number)
   if (!year || !month || !day) return null
@@ -124,6 +146,24 @@ export const memberColor = (index: number) => {
 export const memberPillStyle = (index: number): CSSProperties => {
   const color = memberColor(index)
   return { color: color.solid, backgroundColor: color.soft, borderColor: color.border }
+}
+
+export function layoutAnnotationGrid(itemWidths: number[], containerWidth: number, horizontalGap = 12) {
+  if (itemWidths.length === 0) return { columns: 1, rows: 0, cellWidth: containerWidth, points: [] }
+  const safeWidth = Math.max(1, containerWidth)
+  const maxItemWidth = Math.max(1, ...itemWidths.map((width) => Math.max(1, width)))
+  const columns = Math.max(1, Math.floor(safeWidth / (maxItemWidth + horizontalGap)))
+  const cellWidth = safeWidth / columns
+  return {
+    columns,
+    rows: Math.ceil(itemWidths.length / columns),
+    cellWidth,
+    points: itemWidths.map((_, index) => ({
+      column: index % columns,
+      row: Math.floor(index / columns),
+      x: cellWidth * (index % columns + 0.5),
+    })),
+  }
 }
 
 export const SETTLEMENT_STATUS_META: Record<

@@ -1,6 +1,7 @@
 import type {
   Expense,
   Member,
+  Settlement,
   SettlementBreakdownItem,
   SettlementMode,
 } from './types'
@@ -19,6 +20,20 @@ export interface PairwiseSettlementTransfer extends SettlementTransfer {
 }
 
 export type MemberAmounts = Record<string, number>
+
+export function paidCounterpartyIds(settlements: Settlement[], memberId: string | null) {
+  if (!memberId) return new Set<string>()
+
+  return new Set(
+    settlements
+      .filter((settlement) => settlement.status === 'paid' && (
+        settlement.fromMemberId === memberId || settlement.toMemberId === memberId
+      ))
+      .map((settlement) => settlement.fromMemberId === memberId
+        ? settlement.toMemberId
+        : settlement.fromMemberId),
+  )
+}
 
 function assertYenAmount(amount: number, label: string): void {
   if (!Number.isSafeInteger(amount) || amount < 0) {

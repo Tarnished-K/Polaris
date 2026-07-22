@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Expense, Member } from './types'
+import type { Expense, Member, Settlement } from './types'
 import {
   calculateBalances,
   generatePairwiseSettlements,
   generateSettlements,
+  paidCounterpartyIds,
   splitExpense,
 } from './settlement'
 
@@ -30,6 +31,35 @@ function expense(
     ...overrides,
   }
 }
+
+function settlement(overrides: Partial<Settlement> & Pick<Settlement, 'fromMemberId' | 'toMemberId' | 'status'>): Settlement {
+  return {
+    id: `${overrides.fromMemberId}-${overrides.toMemberId}`,
+    amount: 1000,
+    grossAmount: 1000,
+    offsetAmount: 0,
+    charges: [],
+    offsets: [],
+    ...overrides,
+  }
+}
+
+describe('paidCounterpartyIds', () => {
+  it('指定メンバーと支払い済みになった相手だけを返す', () => {
+    const result = paidCounterpartyIds([
+      settlement({ fromMemberId: 'a', toMemberId: 'b', status: 'paid' }),
+      settlement({ fromMemberId: 'c', toMemberId: 'a', status: 'paid' }),
+      settlement({ fromMemberId: 'a', toMemberId: 'd', status: 'reported' }),
+      settlement({ fromMemberId: 'b', toMemberId: 'd', status: 'paid' }),
+    ], 'a')
+
+    expect([...result].sort()).toEqual(['b', 'c'])
+  })
+
+  it('視点メンバーが未指定なら空集合を返す', () => {
+    expect(paidCounterpartyIds([], null).size).toBe(0)
+  })
+})
 
 describe('splitExpense', () => {
   it('均等割りが割り切れる', () => {

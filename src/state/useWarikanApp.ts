@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 
 import { createDemoData, createFourPersonDemoData } from '../data/demo'
 import {
+  paidCounterpartyIds,
   calculateBalances,
   generatePairwiseSettlements,
   splitExpense,
@@ -18,7 +19,7 @@ import { CATEGORY_IDS } from '../domain/types'
 import { createRandomId, createShareToken } from '../lib/random'
 import type { EventState } from '../backend/types'
 
-export type AppView = 'create' | 'home' | 'expense' | 'dashboard' | 'settlement' | 'settings'
+export type AppView = 'create' | 'home' | 'expense' | 'dashboard' | 'settlement' | 'payment' | 'settings'
 
 export interface NewExpenseInput {
   category: Expense['category']
@@ -73,7 +74,7 @@ export interface WarikanAppState {
 }
 
 const STORAGE_KEY = 'warikan.web.mvp.v1'
-const APP_VIEWS: AppView[] = ['create', 'home', 'expense', 'dashboard', 'settlement', 'settings']
+const APP_VIEWS: AppView[] = ['create', 'home', 'expense', 'dashboard', 'settlement', 'payment', 'settings']
 
 function createEmptyState(): AppState {
   return {
@@ -285,12 +286,19 @@ export function useWarikanApp(): WarikanAppState {
   const currentMemberShare = useMemo(() => {
     if (!state.currentMemberId) return 0
 
+    const paidPairMemberIds = paidCounterpartyIds(state.settlements, state.currentMemberId)
+
     return finalizedExpenses.reduce(
-      (total, expense) =>
-        total + (splitExpense(expense)[state.currentMemberId ?? ''] ?? 0),
+      (total, expense) => {
+        const burden = splitExpense(expense)[state.currentMemberId ?? ''] ?? 0
+        if (expense.payerMemberId !== state.currentMemberId && paidPairMemberIds.has(expense.payerMemberId)) {
+          return total
+        }
+        return total + burden
+      },
       0,
     )
-  }, [finalizedExpenses, state.currentMemberId])
+  }, [finalizedExpenses, state.currentMemberId, state.settlements])
 
   const draftExpenseCount = useMemo(
     () => state.expenses.filter((expense) => expense.status === 'draft').length,
