@@ -7,7 +7,6 @@ import { ExpenseForm, type ExpenseDraftInput } from './components/ExpenseForm'
 import { EventSettingsView } from './components/EventSettingsView'
 import { HomeView } from './components/HomeView'
 import { SettlementView } from './components/SettlementView'
-import { TestResetButton } from './components/TestResetButton'
 import { useWarikanApp } from './state/useWarikanApp'
 import { createWarikanBackend, readSupabaseConfig } from './backend/supabase'
 import { useSupabaseAuth } from './backend/useSupabaseAuth'
@@ -27,7 +26,6 @@ export function App() {
     expenses,
     displaySettlements,
     totalSpent,
-    currentMemberShare,
     draftExpenseCount,
     view,
     setView,
@@ -42,8 +40,6 @@ export function App() {
     addExpense,
     saveDraftExpense,
     finalizeExpense,
-    finalizeEvent,
-    unfinalizeEvent,
     resetApp,
   } = useWarikanApp()
   const createEvent = async (draft: EventDraft) => {
@@ -86,26 +82,22 @@ export function App() {
       currentMemberId={currentMemberId}
       expenses={expenses}
       totalSpent={totalSpent}
-      currentMemberShare={currentMemberShare}
       onAddExpense={() => {
         setEditingExpenseId(null)
         setView('expense')
       }}
       onOpenSettlement={() => setView('settlement')}
+      onOpenPayment={() => setView('payment')}
       onOpenDashboard={() => setView('dashboard')}
       onOpenSettings={() => setView('settings')}
-      onFinalize={finalizeEvent}
-      onUnfinalize={unfinalizeEvent}
       onFinalizeDraft={(expenseId) => {
         setEditingExpenseId(expenseId)
         setView('expense')
       }}
-      onReset={resetToStart}
     />
   )
-  const testResetButton = <TestResetButton onReset={resetToStart} />
   const perspectiveSwitcher = (
-    <DebugPerspectiveSwitcher members={members} currentMemberId={currentMemberId} onChange={setCurrentMember} />
+    <DebugPerspectiveSwitcher members={members} currentMemberId={currentMemberId} onChange={setCurrentMember} onReset={resetToStart} />
   )
 
   if (view === 'expense') {
@@ -138,12 +130,11 @@ export function App() {
           } : undefined}
         />
         {perspectiveSwitcher}
-        {testResetButton}
       </>
     )
   }
 
-  if (view === 'settlement') {
+  if (view === 'settlement' || view === 'payment') {
     return (
       <>
       <SettlementView
@@ -152,16 +143,14 @@ export function App() {
         currentMemberId={currentMemberId}
         expenses={expenses}
         settlements={displaySettlements}
-        totalSpent={totalSpent}
         draftExpenseCount={draftExpenseCount}
+        activeTab={view === 'payment' ? 'payment' : 'settlements'}
         onBack={() => setView('home')}
         onOpenDashboard={() => setView('dashboard')}
+        onOpenSettlements={() => setView('settlement')}
+        onOpenPayment={() => setView('payment')}
         onOpenSettings={() => setView('settings')}
-        onFinalize={finalizeEvent}
-        onUnfinalize={unfinalizeEvent}
-        onReset={resetToStart}
       />
-      {testResetButton}
       {perspectiveSwitcher}
       </>
     )
@@ -175,13 +164,13 @@ export function App() {
           members={members}
           currentMemberId={currentMemberId}
           expenses={expenses}
+          settlements={displaySettlements}
           onOpenExpenses={() => setView('home')}
           onOpenSettlements={() => setView('settlement')}
+          onOpenPayment={() => setView('payment')}
           onOpenSettings={() => setView('settings')}
-          onReset={resetToStart}
         />
         {perspectiveSwitcher}
-        {testResetButton}
       </>
     )
   }
@@ -199,10 +188,10 @@ export function App() {
           onOpenExpenses={() => setView('home')}
           onOpenDashboard={() => setView('dashboard')}
           onOpenSettlements={() => setView('settlement')}
+          onOpenPayment={() => setView('payment')}
           onReset={resetToStart}
         />
         {perspectiveSwitcher}
-        {testResetButton}
       </>
     )
   }
@@ -211,7 +200,6 @@ export function App() {
     <>
       {home}
       {perspectiveSwitcher}
-      {testResetButton}
     </>
   )
 }

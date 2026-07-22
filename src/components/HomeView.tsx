@@ -9,7 +9,6 @@ import {
 } from '../domain/types'
 import { CategoryMonogram } from './CategoryMonogram'
 import { EventHeader } from './EventHeader'
-import { OrganizerControls } from './OrganizerControls'
 import {
   expenseDayLabel,
   formatYen,
@@ -24,15 +23,12 @@ interface HomeViewProps {
   currentMemberId: string | null
   expenses: Expense[]
   totalSpent: number
-  currentMemberShare: number
   onAddExpense: () => void
   onOpenSettlement: () => void
+  onOpenPayment: () => void
   onOpenDashboard: () => void
   onOpenSettings: () => void
-  onFinalize: () => void
-  onUnfinalize: () => void
   onFinalizeDraft: (expenseId: string) => void
-  onReset: () => void
 }
 
 type CategoryFilter = 'all' | CategoryId
@@ -122,15 +118,12 @@ export function HomeView({
   currentMemberId,
   expenses,
   totalSpent,
-  currentMemberShare,
   onAddExpense,
   onOpenSettlement,
+  onOpenPayment,
   onOpenDashboard,
   onOpenSettings,
-  onFinalize,
-  onUnfinalize,
   onFinalizeDraft,
-  onReset,
 }: HomeViewProps) {
   const [filter, setFilter] = useState<CategoryFilter>('all')
   const [memberFilter, setMemberFilter] = useState('all')
@@ -169,8 +162,6 @@ export function HomeView({
   const relevantTotal = isOrganizer
     ? totalSpent
     : relevantExpenses.reduce((sum, expense) => sum + expense.amount, 0)
-  const draftExpenseCount = expenses.filter((expense) => expense.status === 'draft').length
-
   const groupedExpenses = useMemo(() => {
     if (event.eventType !== 'overnight') return []
     return getEventDayOptions(event)
@@ -189,13 +180,12 @@ export function HomeView({
         event={event}
         members={members}
         activeTab="expenses"
-        onTabChange={(tab) => tab === 'dashboard' ? onOpenDashboard() : tab === 'settlements' && onOpenSettlement()}
+        onTabChange={(tab) => tab === 'dashboard' ? onOpenDashboard() : tab === 'settlements' ? onOpenSettlement() : tab === 'payment' && onOpenPayment()}
         onOpenSettings={isOrganizer ? onOpenSettings : undefined}
-        onReset={onReset}
       />
 
       <main className="home-layout">
-        <div className="home-grid">
+        <div className="home-grid home-grid--expenses">
           <section className="expense-list-column" aria-labelledby="expenses-heading">
             <div className="section-heading-row">
               <div>
@@ -205,26 +195,31 @@ export function HomeView({
               <span className="count-label">{visibleExpenses.length}件</span>
             </div>
 
-            <div className="category-tabs" role="group" aria-label="カテゴリで絞り込む">
-              <button
-                type="button"
-                className={filter === 'all' ? 'is-active' : ''}
-                aria-pressed={filter === 'all'}
-                onClick={() => setFilter('all')}
-              >
-                すべて
-              </button>
-              {availableCategories.map((category) => (
+            <div className="expense-filter-toolbar">
+              <div className="category-tabs" role="group" aria-label="カテゴリで絞り込む">
                 <button
                   type="button"
-                  key={category}
-                  className={filter === category ? 'is-active' : ''}
-                  aria-pressed={filter === category}
-                  onClick={() => setFilter(category)}
+                  className={filter === 'all' ? 'is-active' : ''}
+                  aria-pressed={filter === 'all'}
+                  onClick={() => setFilter('all')}
                 >
-                  {CATEGORY_META[category].label}
+                  すべて
                 </button>
-              ))}
+                {availableCategories.map((category) => (
+                  <button
+                    type="button"
+                    key={category}
+                    className={filter === category ? 'is-active' : ''}
+                    aria-pressed={filter === category}
+                    onClick={() => setFilter(category)}
+                  >
+                    {CATEGORY_META[category].label}
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="button button--primary expense-toolbar-add" disabled={addDisabled} onClick={onAddExpense}>
+                <span aria-hidden="true">＋</span>{addDisabled ? '精算確定済み' : '支出を追加'}
+              </button>
             </div>
 
             <div className="participant-filter" role="group" aria-label="参加者で支出を絞り込む">
@@ -293,52 +288,8 @@ export function HomeView({
             </p>
           </section>
 
-          <aside className="home-aside" aria-label="あなたの負担額とイベント操作">
-            <section className="share-summary-card">
-              <div className="share-summary-card__label">
-                <span>{draftExpenseCount > 0 ? '確定済みのあなたの負担額' : 'あなたの負担額'}</span>
-                {event.status === 'active' && <span className="status-pill status-pill--warning">暫定</span>}
-              </div>
-              <strong>{formatYen(currentMemberShare)}</strong>
-              <div className="share-summary-card__actions">
-                <button type="button" className="button button--secondary button--full settlement-future-button" disabled>精算へ（準備中）</button>
-              </div>
-              <p>
-                {event.status === 'active'
-                  ? '支出が追加されるたびに自動で再計算されます'
-                  : '精算金額が確定しました。支払い状況を確認できます'}
-              </p>
-            </section>
-
-            <button
-              type="button"
-              className="button button--outline button--full add-expense-rail"
-              disabled={addDisabled}
-              onClick={onAddExpense}
-            >
-              <span aria-hidden="true">＋</span>
-              {addDisabled ? '精算確定済み' : '支出を追加'}
-            </button>
-
-            {isOrganizer && (
-              <OrganizerControls
-                event={event}
-                members={members}
-                expenseCount={expenses.length}
-                draftExpenseCount={draftExpenseCount}
-                totalSpent={totalSpent}
-                onFinalize={onFinalize}
-                onUnfinalize={onUnfinalize}
-                onReset={onReset}
-              />
-            )}
-          </aside>
         </div>
       </main>
-
-      {!addDisabled && (
-        <button type="button" className="mobile-fab" aria-label="支出を追加" onClick={onAddExpense}>＋</button>
-      )}
     </div>
   )
 }

@@ -2,16 +2,17 @@ import { useMemo, useState } from 'react'
 import type { Member, WarikanEvent } from '../domain/types'
 import { formatEventDateRange, getDurationLabel, memberPillStyle } from './ui'
 
+export type EventSectionTab = 'expenses' | 'dashboard' | 'settlements' | 'payment'
+
 interface EventHeaderProps {
   event: WarikanEvent
   members: Member[]
-  activeTab: 'expenses' | 'dashboard' | 'settlements' | 'settings'
-  onTabChange: (tab: 'expenses' | 'dashboard' | 'settlements') => void
+  activeTab: EventSectionTab | 'settings'
+  onTabChange: (tab: EventSectionTab) => void
   onOpenSettings?: () => void
-  onReset: () => void
 }
 
-export function EventHeader({ event, members, activeTab, onTabChange, onOpenSettings, onReset }: EventHeaderProps) {
+export function EventHeader({ event, members, activeTab, onTabChange, onOpenSettings }: EventHeaderProps) {
   const [copyState, setCopyState] = useState<'idle' | 'done' | 'error'>('idle')
   const shareUrl = useMemo(() => {
     if (typeof window === 'undefined') return `/e/${event.shareToken}`
@@ -48,6 +49,7 @@ export function EventHeader({ event, members, activeTab, onTabChange, onOpenSett
         <button type="button" className={activeTab === 'expenses' ? 'is-active' : ''} onClick={() => onTabChange('expenses')}>支出イベント</button>
         <button type="button" className={activeTab === 'dashboard' ? 'is-active' : ''} onClick={() => onTabChange('dashboard')}>立替ダッシュボード</button>
         <button type="button" className={activeTab === 'settlements' ? 'is-active' : ''} onClick={() => onTabChange('settlements')}>みんなの精算状況</button>
+        <button type="button" className={activeTab === 'payment' ? 'is-active' : ''} onClick={() => onTabChange('payment')}>支払いへ進む</button>
       </nav>
 
       <div className="event-header__actions">
@@ -57,10 +59,9 @@ export function EventHeader({ event, members, activeTab, onTabChange, onOpenSett
           ))}
         </div>
         {onOpenSettings && <button type="button" className={`header-settings-button ${activeTab === 'settings' ? 'is-active' : ''}`} onClick={onOpenSettings}><span aria-hidden="true">⚙</span><b>イベント設定</b></button>}
-        <button type="button" className="header-reset-button" onClick={onReset}><span aria-hidden="true">↺</span><b>最初から</b></button>
         <button type="button" className="share-button" onClick={copyShareUrl}>
           <span aria-hidden="true">⧉</span>
-          {copyState === 'done' ? 'コピーしました' : copyState === 'error' ? 'コピーできませんでした' : '共有リンクをコピー'}
+          <b>{copyState === 'done' ? 'コピーしました' : copyState === 'error' ? 'コピーできませんでした' : '共有リンクをコピー'}</b>
         </button>
       </div>
     </header>

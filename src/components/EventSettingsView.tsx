@@ -14,6 +14,7 @@ interface EventSettingsViewProps {
   onOpenExpenses: () => void
   onOpenDashboard: () => void
   onOpenSettlements: () => void
+  onOpenPayment: () => void
   onReset: () => void
 }
 
@@ -27,6 +28,7 @@ export function EventSettingsView({
   onOpenExpenses,
   onOpenDashboard,
   onOpenSettlements,
+  onOpenPayment,
   onReset,
 }: EventSettingsViewProps) {
   const [title, setTitle] = useState(event.title)
@@ -36,6 +38,7 @@ export function EventSettingsView({
   const [capacity, setCapacity] = useState(event.capacity)
   const [newMemberName, setNewMemberName] = useState('')
   const [message, setMessage] = useState('')
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
 
   const saveEvent = (submitEvent: FormEvent) => {
     submitEvent.preventDefault()
@@ -71,9 +74,8 @@ export function EventSettingsView({
         event={event}
         members={members}
         activeTab="settings"
-        onTabChange={(tab) => tab === 'expenses' ? onOpenExpenses() : tab === 'dashboard' ? onOpenDashboard() : onOpenSettlements()}
+        onTabChange={(tab) => tab === 'expenses' ? onOpenExpenses() : tab === 'dashboard' ? onOpenDashboard() : tab === 'payment' ? onOpenPayment() : onOpenSettlements()}
         onOpenSettings={() => undefined}
-        onReset={onReset}
       />
 
       <main className="event-settings-layout">
@@ -146,6 +148,31 @@ export function EventSettingsView({
             </div>
           </section>
         </div>
+
+        <section className="settings-card event-delete-card" aria-labelledby="event-delete-heading">
+          <div className="settings-card__heading">
+            <span aria-hidden="true">削</span>
+            <div><h3 id="event-delete-heading">イベントを削除</h3><p>この端末からイベントデータを削除して、作成画面へ戻ります</p></div>
+          </div>
+          <p>削除を確認するため、イベント名「<strong>{event.title}</strong>」を入力してください。</p>
+          <label className="field">
+            <span className="field__label">イベント名（プロジェクト名）</span>
+            <input
+              value={deleteConfirmation}
+              autoComplete="off"
+              placeholder={event.title}
+              onChange={(changeEvent) => setDeleteConfirmation(changeEvent.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="button button--danger"
+            disabled={deleteConfirmation !== event.title}
+            onClick={onReset}
+          >
+            イベントを削除
+          </button>
+        </section>
       </main>
     </div>
   )
