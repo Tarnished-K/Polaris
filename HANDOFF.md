@@ -2,6 +2,25 @@
 
 更新日: 2026-07-14
 
+## 2026-07-23 フェーズ0 権限検証の完了
+
+- `scripts/validate-backend.mjs`の参加者操作時に、幹事の認証状態が残ったままになっていた検証上の問題を修正した。参加者操作では認証ユーザーを外し、デバイストークンだけで本人確認する。
+- Docker不要の検証へ、他の参加者による支出編集・削除・確定、自分が対象外の負担額変更、別の幹事によるイベント確定・解除・設定変更・メンバー削除が拒否されることを追加した。
+- 実Postgres向けに`supabase/tests/database/003_authorization_matrix.test.sql`を追加した。上記に加え、イベントをまたぐ支出編集・削除と、anonによるテーブル直接参照の拒否を含む12項目を検証する。
+- 停止中だったSupabase `Warikan`プロジェクトをManagement APIで復旧し、2026-07-23に実Postgres上でpgTAP 49件(基盤27、ワークフロー契約10、権限12)がすべて成功した。テストSQLはトランザクション末尾で`rollback`するため、テストデータは残らない。
+- クラウドにはpgTAPが未導入だったため、`extensions`スキーマへ拡張を導入した。このPCにはDockerが無く、`supabase test db --linked`はリモート接続後のテストランナー起動時にDockerを要求するため、CLIの一時ログインロールとIPv4 poolerを使い、同じ3本のSQLをNode Postgresクライアントから直接実行した。
+- 匿名参加者のテーブル直接参照は、RLSで0件になる前にテーブル権限で`42501 permission denied`となる。権限テストはこの強い拒否を期待値として検証する。
+
+権限マトリクスと実装境界:
+
+- 幹事の本人確認はSupabase Authの`auth.uid()`と`events.organizer_user_id`を`warikan_private.require_organizer`で照合する。イベント確定・解除、設定変更、メンバー削除はこのチェックで他の認証ユーザーを拒否する。
+- アカウントレス参加者は共有トークンとdevice tokenを`require_actor` / `require_member`で解決する。生tokenは保存せずSHA-256ハッシュだけを保持する。
+- 支出の編集・削除・確定はRPC内部で立替者本人または幹事に限定する。他の参加者は`PAYER_OR_ORGANIZER_REQUIRED`で拒否する。
+- `save_own_fixed_amount`は対象参加者本人の行だけを更新でき、対象外の参加者は`MEMBER_NOT_TARGET`で拒否する。
+- RPCは共有トークンから解決したeventと対象expenseの所属を照合する。別イベントのexpense IDを渡しても`EXPENSE_NOT_FOUND`となり、イベント越境操作はできない。
+- `anon`には`events` / `expenses`への直接SELECT権限がなく、公開読み取りは権限チェックを含むRPC契約に限定される。
+- `.github/workflows/ci.yml`を追加し、PRごとに`npm ci`、ユニットテスト、本番ビルド、PGliteバックエンド検証を自動実行する構成にした。PR #3で初回実行が成功した。`backend:lint`はDockerが必要なため、このCIには含めていない。
+
 ## 0. 2026-07-14 クラウドSupabase接続の進捗
 
 - Supabaseプロジェクト `Warikan`（ref: `nrixujdkgvexnnqfoned`）へローカルをリンク済み

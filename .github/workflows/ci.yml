@@ -1,0 +1,45 @@
+name: Validate application
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Test, build, and validate backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Build production assets
+        run: npm run build
+
+      - name: Validate database migrations and core flow
+        run: npm run backend:validate
+
+      # `npm run backend:lint` requires a running Docker-backed local Supabase
+      # database, so it remains part of the separate real-Postgres validation.

@@ -42,12 +42,16 @@ try {
 
   await database.query('select public.organizer_add_member($1::uuid, $2)', [eventId, 'Proxy'])
   const deviceToken = 'device-token-that-is-at-least-thirty-two-characters'
+  const otherDeviceToken = 'other-device-token-that-is-at-least-thirty-two-characters'
   await database.query('select public.join_event($1, $2, $3)', [shareToken, deviceToken, 'Participant'])
+  await database.query('select public.join_event($1, $2, $3)', [shareToken, otherDeviceToken, 'Other participant'])
 
   const members = await database.query('select id, name from public.members where event_id = $1::uuid order by created_at', [eventId])
   const payer = members.rows.find((member) => member.name === 'Participant')
   const proxy = members.rows.find((member) => member.name === 'Proxy')
-  assert.ok(payer && proxy)
+  const otherParticipant = members.rows.find((member) => member.name === 'Other participant')
+  assert.ok(payer && proxy && otherParticipant)
+  await database.query("select set_config('request.jwt.claim.sub', '', false)")
 
   await database.query(
     `select public.add_expense($1, $2, 'food', 'Draft dinner', 5000, $3::uuid, 'fixed', null, $4::jsonb)`,
@@ -68,10 +72,35 @@ try {
   assert.deepEqual(statuses.rows.map(({ status }) => status), ['draft', 'finalized'])
 
   const draftExpense = await database.query("select id from public.expenses where title = 'Draft dinner'")
+  const draftExpenseId = draftExpense.rows[0].id
+  const draftTargets = JSON.stringify([
+    { memberId: payer.id, fixedAmount: 2000 },
+    { memberId: proxy.id, fixedAmount: 3000 },
+  ])
+  await assert.rejects(
+    database.query(
+      `select public.update_expense($1, $2, $3::uuid, 'food', 'Unauthorized edit', 5000, $4::uuid, 'fixed', null, $5::jsonb)`,
+      [shareToken, otherDeviceToken, draftExpenseId, payer.id, draftTargets],
+    ),
+    /PAYER_OR_ORGANIZER_REQUIRED/,
+  )
+  await assert.rejects(
+    database.query('select public.delete_expense($1, $2, $3::uuid)', [shareToken, otherDeviceToken, draftExpenseId]),
+    /PAYER_OR_ORGANIZER_REQUIRED/,
+  )
+  await assert.rejects(
+    database.query('select public.finalize_expense($1, $2, $3::uuid)', [shareToken, otherDeviceToken, draftExpenseId]),
+    /PAYER_OR_ORGANIZER_REQUIRED/,
+  )
+  await assert.rejects(
+    database.query('select public.save_own_fixed_amount($1, $2, $3::uuid, 1000)', [shareToken, otherDeviceToken, draftExpenseId]),
+    /MEMBER_NOT_TARGET/,
+  )
   await database.query('select public.save_own_fixed_amount($1, $2, $3::uuid, 2500)', [shareToken, deviceToken, draftExpense.rows[0].id])
   const savedAmount = await database.query('select fixed_amount from public.expense_targets where expense_id = $1::uuid and member_id = $2::uuid', [draftExpense.rows[0].id, payer.id])
   assert.equal(savedAmount.rows[0].fixed_amount, 2500)
 
+  await database.query("select set_config('request.jwt.claim.sub', $1, false)", [organizerId])
   await database.query(
     `select public.update_expense($1, null, $2::uuid, 'food', 'Updated dinner', 5000, $3::uuid, 'fixed', null, $4::jsonb)`,
     [shareToken, draftExpense.rows[0].id, payer.id, JSON.stringify([
@@ -83,6 +112,24 @@ try {
     `select public.add_expense($1, null, 'activity', 'Reverse advance', 2000, $2::uuid, 'fixed', 2, $3::jsonb)`,
     [shareToken, proxy.id, JSON.stringify([{ memberId: payer.id, fixedAmount: 2000 }])],
   )
+
+  const otherOrganizerId = '10000000-0000-0000-0000-000000000002'
+  await database.query('insert into auth.users(id) values ($1)', [otherOrganizerId])
+  await database.query("select set_config('request.jwt.claim.sub', $1, false)", [otherOrganizerId])
+  await assert.rejects(database.query('select public.finalize_event($1::uuid)', [eventId]), /ORGANIZER_REQUIRED/)
+  await assert.rejects(
+    database.query(
+      "select public.organizer_update_event($1::uuid, 'Unauthorized', 'overnight', '2026-07-18', '2026-07-20', 4)",
+      [eventId],
+    ),
+    /ORGANIZER_REQUIRED/,
+  )
+  await assert.rejects(
+    database.query('select public.organizer_remove_member($1::uuid, $2::uuid)', [eventId, proxy.id]),
+    /ORGANIZER_REQUIRED/,
+  )
+  await assert.rejects(database.query('select public.unfinalize_event($1::uuid, false)', [eventId]), /ORGANIZER_REQUIRED/)
+  await database.query("select set_config('request.jwt.claim.sub', $1, false)", [organizerId])
 
   await database.query('select public.finalize_event($1::uuid)', [eventId])
   const settlementResult = await database.query('select id, amount, gross_amount, offset_amount, status::text from public.settlements where event_id = $1::uuid', [eventId])
@@ -118,7 +165,7 @@ try {
   assert.equal(jobs.rows[0]?.status, 'pending')
 
   const stateResult = await database.query('select public.get_event_state($1) as state', [shareToken])
-  assert.equal(stateResult.rows[0].state.members.length, 3)
+  assert.equal(stateResult.rows[0].state.members.length, 4)
   assert.equal(stateResult.rows[0].state.expenses.length, 3)
 
   console.log(`Validated ${migrations.length} migrations and the core backend flow.`)
