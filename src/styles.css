@@ -1476,7 +1476,8 @@ p {
   margin-bottom: 34px;
 }
 
-.dashboard-metrics article {
+.dashboard-metrics > article,
+.dashboard-metrics > button {
   display: grid;
   gap: 4px;
   padding: 20px 22px;
@@ -1487,8 +1488,35 @@ p {
   animation: metric-enter 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.dashboard-metrics article:nth-child(2) { animation-delay: 70ms; }
-.dashboard-metrics article:nth-child(3) { animation-delay: 140ms; }
+.dashboard-metrics > :nth-child(2) { animation-delay: 70ms; }
+.dashboard-metrics > :nth-child(3) { animation-delay: 140ms; }
+
+.dashboard-net-card {
+  position: relative;
+  width: 100%;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.dashboard-net-card:hover { border-color: var(--accent); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.dashboard-net-card:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.dashboard-net-card em {
+  position: absolute;
+  right: 18px;
+  bottom: 17px;
+  color: var(--accent-dark);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 850;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.dashboard-net-card:hover em,
+.dashboard-net-card:focus-visible em { opacity: 1; transform: translateX(0); }
 
 .dashboard-metrics span { color: var(--subtle); font-size: 0.9rem; font-weight: 850; }
 .dashboard-metrics strong { font-size: 1.72rem; font-variant-numeric: tabular-nums; }
@@ -3384,8 +3412,11 @@ p {
   .advance-dashboard-heading h2 { font-size: 1.4rem; }
   .dashboard-chart-mode { justify-content: space-between; margin-top: 14px; }
   .dashboard-metrics { grid-template-columns: 1fr; gap: 9px; margin-bottom: 26px; }
-  .dashboard-metrics article { grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: 15px 17px; }
-  .dashboard-metrics article strong { grid-row: 1 / span 2; grid-column: 2; font-size: 1.3rem; }
+  .dashboard-metrics > article,
+  .dashboard-metrics > button { grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: 15px 17px; }
+  .dashboard-metrics > article strong,
+  .dashboard-metrics > button strong { grid-row: 1 / span 2; grid-column: 2; font-size: 1.3rem; }
+  .dashboard-net-card em { position: static; grid-column: 1 / -1; opacity: 1; transform: none; }
   .dashboard-chart-grid { grid-template-columns: 1fr; }
   .dashboard-chart-card { padding: 18px; }
   .dashboard-vertical-chart { min-height: 270px; }

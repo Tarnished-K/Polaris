@@ -225,7 +225,12 @@ export function AdvanceDashboardView({
         <section className="dashboard-metrics" aria-label="立替の集計">
           <article><span>自分が立て替え中</span><strong>{formatYen(summary.outgoingTotal)}</strong><small>ほかの参加者の負担分</small></article>
           <article><span>立て替えてもらった</span><strong>{formatYen(summary.incomingTotal)}</strong><small>自分が負担する分</small></article>
-          <article className={net >= 0 ? 'is-receivable' : 'is-payable'}><span>差し引き</span><strong>{net >= 0 ? '+' : '−'}{formatYen(Math.abs(net))}</strong><small>{net >= 0 ? '受け取り側' : '支払い側'}の目安</small></article>
+          <button type="button" className={`dashboard-net-card ${net >= 0 ? 'is-receivable' : 'is-payable'}`} onClick={onOpenSettlements}>
+            <span>差し引き</span>
+            <strong>{net >= 0 ? '+' : '−'}{formatYen(Math.abs(net))}</strong>
+            <small>{net >= 0 ? '受け取り側' : '支払い側'}の目安</small>
+            <em>精算を見る <b aria-hidden="true">→</b></em>
+          </button>
         </section>
 
         {summary.draftCount > 0 && <p className="dashboard-draft-note">暫定支出{summary.draftCount}件は、内訳が確定するとグラフに反映されます。</p>}
