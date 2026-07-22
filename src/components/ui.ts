@@ -8,6 +8,25 @@ export const formatYen = (amount: number) =>
     maximumFractionDigits: 0,
   }).format(Number.isFinite(amount) ? amount : 0)
 
+/** Distributes whole percentages with the largest-remainder method. */
+export const allocatePercentages = (amounts: number[]) => {
+  const normalized = amounts.map((amount) => Number.isFinite(amount) && amount > 0 ? amount : 0)
+  const total = normalized.reduce((sum, amount) => sum + amount, 0)
+  if (total <= 0) return normalized.map(() => 0)
+
+  const exact = normalized.map((amount) => (amount / total) * 100)
+  const allocated = exact.map(Math.floor)
+  const remainder = 100 - allocated.reduce((sum, percentage) => sum + percentage, 0)
+  const order = exact
+    .map((percentage, index) => ({ index, fraction: percentage - allocated[index] }))
+    .sort((left, right) => right.fraction - left.fraction || left.index - right.index)
+
+  for (let index = 0; index < remainder; index += 1) {
+    allocated[order[index].index] += 1
+  }
+  return allocated
+}
+
 const parseDate = (value: string) => {
   const [year, month, day] = value.split('-').map(Number)
   if (!year || !month || !day) return null

@@ -3,7 +3,7 @@ import { useMemo, useState, type CSSProperties } from 'react'
 import { splitExpense } from '../domain/settlement'
 import { CATEGORY_META, type Expense, type Member, type WarikanEvent } from '../domain/types'
 import { EventHeader } from './EventHeader'
-import { formatYen, memberColor, memberName } from './ui'
+import { allocatePercentages, formatYen, memberColor, memberName } from './ui'
 
 interface AdvanceDashboardViewProps {
   event: WarikanEvent
@@ -24,9 +24,16 @@ interface ChartItem {
 }
 
 type ChartMode = 'bar' | 'pie'
+type BreakdownMode = 'expense' | 'member'
+
+interface ChartDataset {
+  title: string
+  description: string
+  items: ChartItem[]
+}
 
 function pieGradient(items: ChartItem[], total: number) {
-  if (items.length === 0 || total <= 0) return '#efebe5'
+  if (items.length === 0 || total <= 0) return 'var(--canvas)'
 
   let start = 0
   const stops = items.map((item) => {
@@ -39,26 +46,49 @@ function pieGradient(items: ChartItem[], total: number) {
   return `conic-gradient(${stops.join(', ')})`
 }
 
-function ChartCard({ title, description, items, total, animationIndex, mode }: { title: string; description: string; items: ChartItem[]; total: number; animationIndex: number; mode: ChartMode }) {
+function percentageLabel(amount: number, percentage: number) {
+  return amount > 0 && percentage === 0 ? '1%未満' : `${percentage}%`
+}
+
+function ChartCard({
+  datasets,
+  breakdown,
+  onBreakdownChange,
+  total,
+  animationIndex,
+  mode,
+}: {
+  datasets: Record<BreakdownMode, ChartDataset>
+  breakdown: BreakdownMode
+  onBreakdownChange: (mode: BreakdownMode) => void
+  total: number
+  animationIndex: number
+  mode: ChartMode
+}) {
+  const { title, description, items } = datasets[breakdown]
   const sortedItems = [...items].sort((left, right) => right.amount - left.amount)
   const maxAmount = Math.max(...sortedItems.map((item) => item.amount), 1)
+  const percentages = allocatePercentages(sortedItems.map((item) => item.amount))
 
   return (
     <section className="dashboard-chart-card" style={{ '--chart-delay': `${animationIndex * 90}ms` } as CSSProperties}>
       <div className="dashboard-chart-card__heading">
         <div><h3>{title}</h3><p>{description}</p></div>
-        <div className="dashboard-chart-total"><span>合計</span><strong>{formatYen(total)}</strong></div>
+        {mode === 'bar' && <div className="dashboard-chart-total"><span>合計</span><strong>{formatYen(total)}</strong></div>}
+      </div>
+      <div className="dashboard-breakdown-mode" role="group" aria-label="内訳の集計単位">
+        <button type="button" className={breakdown === 'expense' ? 'is-active' : ''} aria-pressed={breakdown === 'expense'} onClick={() => onBreakdownChange('expense')}>イベント別</button>
+        <button type="button" className={breakdown === 'member' ? 'is-active' : ''} aria-pressed={breakdown === 'member'} onClick={() => onBreakdownChange('member')}>相手別</button>
       </div>
       {mode === 'bar' ? (
-        <div className="dashboard-vertical-chart" role="img" aria-label={`${title}、縦棒グラフ、合計${formatYen(total)}`}>
+        <div className="dashboard-vertical-chart" role="group" aria-label={`${title}、縦棒グラフ、合計${formatYen(total)}`}>
           {sortedItems.length === 0 ? <p className="dashboard-chart__empty">確定済みの対象支出はありません</p> : (
             <div
               className="dashboard-vertical-chart__plot"
               style={{ '--bar-count': sortedItems.length } as CSSProperties}
             >
-              {sortedItems.map((item) => (
+              {sortedItems.map((item, index) => (
                 <div className="dashboard-vertical-bar" key={item.id}>
-                  <strong>{formatYen(item.amount)}</strong>
                   <div className="dashboard-vertical-bar__track" aria-hidden="true">
                     <span
                       style={{
@@ -67,25 +97,28 @@ function ChartCard({ title, description, items, total, animationIndex, mode }: {
                       } as CSSProperties}
                     />
                   </div>
+                  <strong>{formatYen(item.amount)} <small>· {percentageLabel(item.amount, percentages[index])}</small></strong>
                   <span title={item.label}>{item.label}</span>
-                  <small>{Math.round((item.amount / total) * 100)}%</small>
                 </div>
               ))}
             </div>
           )}
         </div>
       ) : (
-        <div className="dashboard-pie-chart" role="img" aria-label={`${title}、円グラフ、合計${formatYen(total)}`}>
+        <div className="dashboard-pie-chart" role="group" aria-label={`${title}、ドーナツグラフ、合計${formatYen(total)}`}>
           {sortedItems.length === 0 ? <p className="dashboard-chart__empty">確定済みの対象支出はありません</p> : (
             <>
-              <div className="dashboard-pie-chart__visual" style={{ background: pieGradient(sortedItems, total) }} aria-hidden="true" />
+              <div className="dashboard-pie-chart__donut" aria-hidden="true">
+                <div className="dashboard-pie-chart__visual" style={{ background: pieGradient(sortedItems, total) }} />
+                <div className="dashboard-pie-chart__center"><span>合計</span><strong>{formatYen(total)}</strong></div>
+              </div>
               <div className="dashboard-pie-chart__legend">
-                {sortedItems.map((item) => (
+                {sortedItems.map((item, index) => (
                   <div key={item.id}>
                     <i style={{ background: item.color }} />
                     <span title={item.label}>{item.label}</span>
                     <strong>{formatYen(item.amount)}</strong>
-                    <small>{Math.round((item.amount / total) * 100)}%</small>
+                    <small>{percentageLabel(item.amount, percentages[index])}</small>
                   </div>
                 ))}
               </div>
@@ -108,6 +141,8 @@ export function AdvanceDashboardView({
   onReset,
 }: AdvanceDashboardViewProps) {
   const [chartMode, setChartMode] = useState<ChartMode>('bar')
+  const [outgoingBreakdown, setOutgoingBreakdown] = useState<BreakdownMode>('expense')
+  const [incomingBreakdown, setIncomingBreakdown] = useState<BreakdownMode>('expense')
   const summary = useMemo(() => {
     const outgoingByExpense: ChartItem[] = []
     const incomingByExpense: ChartItem[] = []
@@ -198,16 +233,34 @@ export function AdvanceDashboardView({
         <section className="dashboard-chart-section" aria-labelledby="advanced-heading">
           <div className="dashboard-section-heading"><h2 id="advanced-heading">自分が立て替えた金額の内訳</h2></div>
           <div className="dashboard-chart-grid">
-            <ChartCard title="支出イベントごとの金額" description="どの支出の立て替えが重かったか" items={summary.outgoingByExpense} total={summary.outgoingTotal} animationIndex={0} mode={chartMode} />
-            <ChartCard title="立替相手ごとの金額" description="誰の分を多く立て替えたか" items={summary.outgoingByMember} total={summary.outgoingTotal} animationIndex={1} mode={chartMode} />
+            <ChartCard
+              datasets={{
+                expense: { title: '支出イベントごとの金額', description: 'どの支出の立て替えが重かったか', items: summary.outgoingByExpense },
+                member: { title: '立替相手ごとの金額', description: '誰の分を多く立て替えたか', items: summary.outgoingByMember },
+              }}
+              breakdown={outgoingBreakdown}
+              onBreakdownChange={setOutgoingBreakdown}
+              total={summary.outgoingTotal}
+              animationIndex={0}
+              mode={chartMode}
+            />
           </div>
         </section>
 
         <section className="dashboard-chart-section" aria-labelledby="received-heading">
           <div className="dashboard-section-heading dashboard-section-heading--received"><h2 id="received-heading">立て替えてもらった金額の内訳</h2></div>
           <div className="dashboard-chart-grid">
-            <ChartCard title="支出イベントごとの金額" description="何の支出を多く立て替えてもらったか" items={summary.incomingByExpense} total={summary.incomingTotal} animationIndex={2} mode={chartMode} />
-            <ChartCard title="立替者ごとの金額" description="誰にいくら立て替えてもらったか" items={summary.incomingByPayer} total={summary.incomingTotal} animationIndex={3} mode={chartMode} />
+            <ChartCard
+              datasets={{
+                expense: { title: '支出イベントごとの金額', description: '何の支出を多く立て替えてもらったか', items: summary.incomingByExpense },
+                member: { title: '立替者ごとの金額', description: '誰にいくら立て替えてもらったか', items: summary.incomingByPayer },
+              }}
+              breakdown={incomingBreakdown}
+              onBreakdownChange={setIncomingBreakdown}
+              total={summary.incomingTotal}
+              animationIndex={1}
+              mode={chartMode}
+            />
           </div>
         </section>
       </main>

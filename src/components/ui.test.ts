@@ -1,7 +1,25 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Member } from '../domain/types'
-import { memberColor, memberDisplayName } from './ui'
+import { allocatePercentages, memberColor, memberDisplayName } from './ui'
+
+describe('allocatePercentages', () => {
+  it('最大剰余法で合計を100%にする', () => {
+    const percentages = allocatePercentages([1, 1, 1])
+    expect(percentages).toEqual([34, 33, 33])
+    expect(percentages.reduce((sum, percentage) => sum + percentage, 0)).toBe(100)
+  })
+
+  it('微小項目と無効な値を安全に扱う', () => {
+    const percentages = allocatePercentages([999, 1, 0, -1, Number.NaN])
+    expect(percentages).toEqual([100, 0, 0, 0, 0])
+  })
+
+  it('合計が0なら全項目を0%にする', () => {
+    expect(allocatePercentages([0, 0])).toEqual([0, 0])
+    expect(allocatePercentages([])).toEqual([])
+  })
+})
 
 describe('memberColor', () => {
   it('最大定員50人にそれぞれ異なる色を割り当てる', () => {
