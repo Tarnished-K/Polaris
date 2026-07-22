@@ -3771,8 +3771,8 @@ p {
   .pair-result { flex-direction: column; gap: 3px; }
   .balance-scale__hanger i { width: 58px; }
   .pair-comparison { padding-right: 8px; padding-left: 8px; }
-  .pair-bars { --pair-track-height: 132px; --pair-track-top: 45px; grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr); gap: 2px; }
-  .pair-bars__versus { width: 60px; min-height: 56px; margin-top: 12px; }
+  .pair-bars { --pair-track-height: 132px; --pair-track-top: 45px; grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr); align-items: start; gap: 2px; }
+  .pair-bars__versus { width: 60px; min-height: 56px; margin-top: calc(var(--pair-track-top) + var(--pair-track-height) / 2 + 1px); transform: translateY(-50%); }
   .pair-bars__versus strong { font-size: 0.68rem; }
   .advance-bar-column { gap: 6px; }
   .advance-bar-amount { min-height: 39px; }
