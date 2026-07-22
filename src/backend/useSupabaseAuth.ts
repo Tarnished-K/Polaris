@@ -11,6 +11,16 @@ export interface SupabaseAuthState {
   signOut: () => Promise<void>
 }
 
+interface OAuthRedirectLocation {
+  origin: string
+  pathname: string
+  search: string
+}
+
+export function buildOAuthRedirectUrl(location: OAuthRedirectLocation): string {
+  return new URL(`${location.pathname}${location.search}`, location.origin).toString()
+}
+
 export function useSupabaseAuth(): SupabaseAuthState {
   const config = useMemo(readSupabaseConfig, [])
   const client = useMemo(() => getSupabaseClient(config), [config])
@@ -42,7 +52,7 @@ export function useSupabaseAuth(): SupabaseAuthState {
 
   const signInWithGoogle = useCallback(async () => {
     if (!client) throw new Error('Supabaseの接続設定がありません')
-    const redirectTo = new URL('/', window.location.origin).toString()
+    const redirectTo = buildOAuthRedirectUrl(window.location)
     const { error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo },

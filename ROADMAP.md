@@ -169,7 +169,7 @@ Postgresマイグレーション4本が実装済み。
 
 - `src/backend/supabase.ts`の`createWarikanBackend(config)`は、上記RPCのうち14個(`createEvent`, `getEventState`, `joinEvent`, `claimMember`, `addExpense`, `updateExpense`, `saveOwnFixedAmount`, `finalizeExpense`, `deleteExpense`, `finalizeEvent`, `unfinalizeEvent`, `reportSettlement`, `confirmSettlement`, `revertSettlement`)をラップしたクライアントメソッドを既に持っている。
 - しかし`src/App.tsx`から実際に呼ばれているのは**`backend.createEvent()`のみ**。それ以外の13メソッドはコード上に存在するがどこからも呼ばれていない。
-- 認証: `src/backend/useSupabaseAuth.ts`がGoogle OAuth開始・セッション復元・ログアウトを実装済み。ただし**Supabaseダッシュボード側でGoogleプロバイダーがまだDisabled**であり、Google Cloud側のOAuth Web Client(Client ID / Secret)も未作成のため、実際にはログインボタンを押しても成功しない。
+- 認証: `src/backend/useSupabaseAuth.ts`がGoogle OAuth開始・セッション復元・ログアウトを実装済み。2026-07-23に共有URLのpathname/queryをOAuth後も保持するよう修正し、Supabase AuthのSite URLとローカルRedirect URLも設定済み。ただし**Supabaseダッシュボード側でGoogleプロバイダーがまだDisabled**であり、Google Cloud側のOAuth Web Client(Client ID / Secret)も未作成のため、実際のGoogleログインはまだ成功しない。
 - 共有URL: `createEvent`成功時に`window.history.replaceState(null, '', `/e/${remote.event.shareToken}`)`でURLの見た目だけを書き換えている。**しかし、ページの初回マウント時にこのURLパスを解析して`get_event_state`を呼ぶ処理が一切存在しない**。つまり、この共有URLを別端末・別タブで開いても真っ白(または初期状態)にしかならない。フェーズ2で最優先に実装すること。
 - `src/backend/types.ts`は手書きのTypeScript interfaceであり、`supabase gen types typescript`等によるDBスキーマからの自動生成は行われていない。マイグレーションを変更した際に型が追従しない(ズレる)リスクがある。
 
@@ -181,7 +181,7 @@ Postgresマイグレーション4本が実装済み。
 
 ### 2.8 テスト状況
 
-- `main`ブランチ: テストファイル5本(`src/backend/supabase.test.ts`, `src/components/ui.test.ts`, `src/data/demo.test.ts`, `src/domain/settlement.test.ts`, `src/lib/random.test.ts`)、**34件のユニットテストが成功**(`npm test`で確認済み)。
+- テストファイル6本(`src/backend/supabase.test.ts`, `src/backend/useSupabaseAuth.test.ts`, `src/components/ui.test.ts`, `src/data/demo.test.ts`, `src/domain/settlement.test.ts`, `src/lib/random.test.ts`)、**36件のユニットテストが成功**(`npm test`で確認済み)。
 - E2Eテスト(Playwright等)は一切自動化されていない。過去の検証はすべて人力(または開発補助エージェントが都度手動でPlaywrightスクリプトを書いて実行)で行っている。
 - GitHub Pagesプレビュー用の`.github/workflows/deploy-pages.yml`が存在する。2026-07-23にテスト・ビルド・`backend:validate`を実行する`.github/workflows/ci.yml`を追加し、PR #3のGitHub Actionsで全工程の成功を確認した。
 
@@ -264,7 +264,7 @@ Postgresマイグレーション4本が実装済み。
 1. Google CloudでOAuth Web Clientを作成し、承認済みリダイレクトURIへ`https://nrixujdkgvexnnqfoned.supabase.co/auth/v1/callback`を追加する。(この作業自体は人間のオーナーがGoogle Cloud Consoleで行う必要がある。Codexが担当できるのは、必要な設定値・手順をドキュメント化するところまで。)
 2. Supabase Dashboard > Authentication > Sign In / Providers > Google にClient ID / Secretを設定し、有効化する。(同上、ダッシュボード操作は人間側の作業。)
 3. Authentication > URL ConfigurationへローカルURL(`http://localhost:5173`等)と本番URLを登録する。
-4. コード側の対応: `src/backend/useSupabaseAuth.ts`の`signInWithGoogle`は実装済みのため、追加のコード変更は基本的に不要なはず。ただし、ログイン後のリダイレクト先(`redirectTo: new URL('/', window.location.origin).toString()`)が、共有URL経由でアクセスしていた場合に元のイベントページへ戻れるかを確認し、必要であれば`redirectTo`にリダイレクト前のパスを含める改修を行う。
+4. コード側の対応: `src/backend/useSupabaseAuth.ts`の`signInWithGoogle`は実装済み。2026-07-23に`buildOAuthRedirectUrl`を追加し、共有URLのpathname/queryをログイン後も保持するよう改修・テスト済み。
 5. E2E確認: ローカル画面の「Googleでログイン」から実ログイン→`create_event`→共有URL発行までを確認する。
 
 **受け入れ条件**: 実ブラウザでGoogleログインが完了し、`auth.user`が取得でき、`create_event`が認証済みユーザーとして成功する。
@@ -449,6 +449,6 @@ Postgresマイグレーション4本が実装済み。
 新しいセッションでこのロードマップに基づいて作業を始める際は、以下を必ず実施すること。
 
 1. `git log --oneline`で`main`ブランチの現在のHEADを確認し、本書の記載(2.1節)と食い違いがないか確認する。
-2. `npm ci && npm test && npm run build && npm run backend:validate`を実行し、本書記載のテスト件数(main: 34件)と現状が一致するか確認する。数値が食い違う場合、本書の記載が古くなっている可能性があるため、実際のコードを優先し、必要であれば本書を更新する。
+2. `npm ci && npm test && npm run build && npm run backend:validate`を実行し、本書記載のテスト件数(36件)と現状が一致するか確認する。数値が食い違う場合、本書の記載が古くなっている可能性があるため、実際のコードを優先し、必要であれば本書を更新する。
 3. どのフェーズから着手するかが不明な場合は、フェーズ番号順(0 → 0.5 → 1 → 2 → …)を既定の優先順位とする。ただし人間のオーナーから明示的な指示があればそれに従う。
 4. バックログ(6節)の項目には、明示的な着手指示がない限り着手しない。
