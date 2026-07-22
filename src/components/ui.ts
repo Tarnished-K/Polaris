@@ -80,6 +80,18 @@ export const expenseDayLabel = (event: WarikanEvent, expense: Expense) => {
 export const memberName = (members: Member[], id: string) =>
   members.find((member) => member.id === id)?.name ?? '不明な参加者'
 
+export const memberDisplayName = (
+  members: Member[],
+  id: string,
+  currentMemberId: string | null,
+) => {
+  const member = members.find((item) => item.id === id)
+  if (!member) return '不明な参加者'
+  if (member.id === currentMemberId) return 'あなた'
+  if (member.isOrganizer) return '幹事'
+  return member.name
+}
+
 /** Golden-angle hues provide a stable palette for the maximum 50 participants. */
 export const memberColor = (index: number) => {
   const hue = Math.round((18 + index * 137.508) % 360)

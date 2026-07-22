@@ -10,7 +10,7 @@ import type {
 import { CATEGORY_META } from '../domain/types'
 import { OrganizerControls } from './OrganizerControls'
 import { EventHeader } from './EventHeader'
-import { formatYen, memberName, memberPillStyle, SETTLEMENT_STATUS_META } from './ui'
+import { formatYen, memberDisplayName, memberPillStyle, SETTLEMENT_STATUS_META } from './ui'
 
 interface SettlementViewProps {
   event: WarikanEvent
@@ -39,10 +39,12 @@ function StatusBadge({ status, amount }: Pick<Settlement, 'status' | 'amount'>) 
 function BreakdownRows({
   items,
   members,
+  currentMemberId,
   negative = false,
 }: {
   items: SettlementBreakdownItem[]
   members: Member[]
+  currentMemberId: string | null
   negative?: boolean
 }) {
   return (
@@ -52,7 +54,7 @@ function BreakdownRows({
           <div>
             <strong>{item.expenseTitle}</strong>
             <small>
-              {memberName(members, item.toMemberId)}が立て替え
+              {memberDisplayName(members, item.toMemberId, currentMemberId)}が立て替え
               {item.dayIndex ? `・${item.dayIndex}日目` : ''}
             </small>
           </div>
@@ -68,9 +70,11 @@ function BreakdownRows({
 function SettlementBreakdown({
   settlement,
   members,
+  currentMemberId,
 }: {
   settlement: Settlement
   members: Member[]
+  currentMemberId: string | null
 }) {
   return (
     <details className="settlement-breakdown">
@@ -78,10 +82,10 @@ function SettlementBreakdown({
       <div className="settlement-breakdown__body">
         <section>
           <h4>
-            {memberName(members, settlement.toMemberId)}が
-            {memberName(members, settlement.fromMemberId)}の分を立て替えた支出
+            {memberDisplayName(members, settlement.toMemberId, currentMemberId)}が
+            {memberDisplayName(members, settlement.fromMemberId, currentMemberId)}の分を立て替えた支出
           </h4>
-          <BreakdownRows items={settlement.charges} members={members} />
+          <BreakdownRows items={settlement.charges} members={members} currentMemberId={currentMemberId} />
           <p className="breakdown-subtotal">
             小計 <strong>{formatYen(settlement.grossAmount)}</strong>
           </p>
@@ -90,13 +94,13 @@ function SettlementBreakdown({
         {settlement.offsets.length > 0 && (
           <section className="offset-section">
             <h4>
-              {memberName(members, settlement.fromMemberId)}が
-              {memberName(members, settlement.toMemberId)}の分を立て替えた支出
+              {memberDisplayName(members, settlement.fromMemberId, currentMemberId)}が
+              {memberDisplayName(members, settlement.toMemberId, currentMemberId)}の分を立て替えた支出
             </h4>
             <p>
               反対方向の立て替えとして差し引きます。
             </p>
-            <BreakdownRows items={settlement.offsets} members={members} negative />
+            <BreakdownRows items={settlement.offsets} members={members} currentMemberId={currentMemberId} negative />
             <p className="breakdown-subtotal breakdown-subtotal--offset">
               差し引き <strong>−{formatYen(settlement.offsetAmount)}</strong>
             </p>
@@ -123,14 +127,15 @@ interface BarSide {
   items: SettlementBreakdownItem[]
 }
 
-function AdvanceBar({ side, members, maxAmount, position }: { side: BarSide; members: Member[]; maxAmount: number; position: 'left' | 'right' }) {
+function AdvanceBar({ side, members, currentMemberId, maxAmount, position }: { side: BarSide; members: Member[]; currentMemberId: string | null; maxAmount: number; position: 'left' | 'right' }) {
   const memberIndex = Math.max(0, members.findIndex((member) => member.id === side.memberId))
+  const displayName = memberDisplayName(members, side.memberId, currentMemberId)
   return (
     <div className="advance-bar-side">
       <div className={`advance-bar-side__visual advance-bar-side__visual--${position}`}>
         <div className="advance-bar-column">
           <div className="advance-bar-amount"><span>立替額</span><strong>{formatYen(side.amount)}</strong></div>
-          <div className="advance-bar-track" aria-label={`${memberName(members, side.memberId)}の立替額${formatYen(side.amount)}`}>
+          <div className="advance-bar-track" aria-label={`${displayName}の立替額${formatYen(side.amount)}`}>
             {side.items.map((item) => (
               <span
                 className="advance-bar-segment"
@@ -143,7 +148,7 @@ function AdvanceBar({ side, members, maxAmount, position }: { side: BarSide; mem
               />
             ))}
           </div>
-          <span className="advance-bar-member" style={memberPillStyle(memberIndex)}>{memberName(members, side.memberId)}</span>
+          <span className="advance-bar-member" style={memberPillStyle(memberIndex)}>{displayName}</span>
         </div>
         <div className="advance-bar-legend">
           {side.items.length === 0 ? (
@@ -162,8 +167,8 @@ function AdvanceBar({ side, members, maxAmount, position }: { side: BarSide; mem
 }
 
 function PairAdvanceBars({ settlement, members, currentMemberId, organizer }: { settlement: Settlement; members: Member[]; currentMemberId: string | null; organizer: boolean }) {
-  const fromName = memberName(members, settlement.fromMemberId)
-  const toName = memberName(members, settlement.toMemberId)
+  const fromName = memberDisplayName(members, settlement.fromMemberId, currentMemberId)
+  const toName = memberDisplayName(members, settlement.toMemberId, currentMemberId)
   const maxAmount = Math.max(settlement.grossAmount, settlement.offsetAmount, 1)
   const fromSide: BarSide = { memberId: settlement.fromMemberId, amount: settlement.offsetAmount, items: settlement.offsets }
   const toSide: BarSide = { memberId: settlement.toMemberId, amount: settlement.grossAmount, items: settlement.charges }
@@ -173,13 +178,11 @@ function PairAdvanceBars({ settlement, members, currentMemberId, organizer }: { 
   const isCurrentPaying = !organizer && currentMemberId === settlement.fromMemberId
   const isCurrentReceiving = !organizer && currentMemberId === settlement.toMemberId
   const resultTone = settlement.amount === 0 ? 'even' : isCurrentPaying ? 'pay' : isCurrentReceiving ? 'receive' : 'neutral'
-  const participantFacingFromName = fromName === 'あなた' ? '幹事' : fromName
-  const participantFacingToName = toName === 'あなた' ? '幹事' : toName
   const resultLabel = organizer
     ? `${fromName} → ${toName} に支払う`
     : isCurrentPaying
-      ? `あなた → ${participantFacingToName} に支払う`
-      : `${participantFacingFromName} → あなたが受け取る`
+      ? `あなた → ${toName} に支払う`
+      : `${fromName} → あなたが受け取る`
 
   return (
     <div className="pair-comparison">
@@ -196,9 +199,9 @@ function PairAdvanceBars({ settlement, members, currentMemberId, organizer }: { 
       </div>
       <p className="pair-comparison__caption">同じ基準で、相手の分を立て替えた金額を比較</p>
       <div className="pair-bars">
-        <AdvanceBar side={leftSide} members={members} maxAmount={maxAmount} position="left" />
+        <AdvanceBar side={leftSide} members={members} currentMemberId={currentMemberId} maxAmount={maxAmount} position="left" />
         <span className="pair-bars__versus">比較</span>
-        <AdvanceBar side={rightSide} members={members} maxAmount={maxAmount} position="right" />
+        <AdvanceBar side={rightSide} members={members} currentMemberId={currentMemberId} maxAmount={maxAmount} position="right" />
       </div>
     </div>
   )
@@ -218,10 +221,10 @@ function comparisonTitle({
     const counterpartId = settlement.fromMemberId === currentMemberId
       ? settlement.toMemberId
       : settlement.fromMemberId
-    return `${memberName(members, counterpartId)}との比較`
+    return `${memberDisplayName(members, counterpartId, currentMemberId)}との比較`
   }
 
-  return `${memberName(members, settlement.fromMemberId)}と${memberName(members, settlement.toMemberId)}の比較`
+  return `${memberDisplayName(members, settlement.fromMemberId, currentMemberId)}と${memberDisplayName(members, settlement.toMemberId, currentMemberId)}の比較`
 }
 
 export function SettlementView({
@@ -320,7 +323,7 @@ export function SettlementView({
                     </header>
                     <PairAdvanceBars settlement={settlement} members={members} currentMemberId={currentMemberId} organizer={organizer} />
                     <div className="pair-settlement-card__footer">
-                      <SettlementBreakdown settlement={settlement} members={members} />
+                      <SettlementBreakdown settlement={settlement} members={members} currentMemberId={currentMemberId} />
                     </div>
                   </article>
                   )
