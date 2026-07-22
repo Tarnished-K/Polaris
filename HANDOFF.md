@@ -19,7 +19,7 @@
 - `save_own_fixed_amount`は対象参加者本人の行だけを更新でき、対象外の参加者は`MEMBER_NOT_TARGET`で拒否する。
 - RPCは共有トークンから解決したeventと対象expenseの所属を照合する。別イベントのexpense IDを渡しても`EXPENSE_NOT_FOUND`となり、イベント越境操作はできない。
 - `anon`には`events` / `expenses`への直接SELECT権限がなく、公開読み取りは権限チェックを含むRPC契約に限定される。
-- `.github/workflows/ci.yml`を追加し、PRごとに`npm ci`、ユニットテスト、本番ビルド、PGliteバックエンド検証を自動実行する構成にした。`backend:lint`はDockerが必要なため、このCIには含めていない。
+- `.github/workflows/ci.yml`を追加し、PRごとに`npm ci`、ユニットテスト、本番ビルド、PGliteバックエンド検証を自動実行する構成にした。PR #3で初回実行が成功した。`backend:lint`はDockerが必要なため、このCIには含めていない。
 
 ## 0. 2026-07-14 クラウドSupabase接続の進捗
 

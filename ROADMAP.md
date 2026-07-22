@@ -183,7 +183,7 @@ Postgresマイグレーション4本が実装済み。
 
 - `main`ブランチ: テストファイル5本(`src/backend/supabase.test.ts`, `src/components/ui.test.ts`, `src/data/demo.test.ts`, `src/domain/settlement.test.ts`, `src/lib/random.test.ts`)、**34件のユニットテストが成功**(`npm test`で確認済み)。
 - E2Eテスト(Playwright等)は一切自動化されていない。過去の検証はすべて人力(または開発補助エージェントが都度手動でPlaywrightスクリプトを書いて実行)で行っている。
-- GitHub Pagesプレビュー用の`.github/workflows/deploy-pages.yml`が存在する。2026-07-23にテスト・ビルド・`backend:validate`を実行する`.github/workflows/ci.yml`を追加した(初回のGitHub Actions成功確認は未実施)。
+- GitHub Pagesプレビュー用の`.github/workflows/deploy-pages.yml`が存在する。2026-07-23にテスト・ビルド・`backend:validate`を実行する`.github/workflows/ci.yml`を追加し、PR #3のGitHub Actionsで全工程の成功を確認した。
 
 ### 2.9 デモ・デバッグ用データ
 
@@ -242,7 +242,7 @@ Postgresマイグレーション4本が実装済み。
 
 ---
 
-### フェーズ0.5: CI導入(並行着手可、優先度高・低コスト)
+### フェーズ0.5: CI導入 — 完了(2026-07-23)
 
 **背景**: GitHub Pagesプレビュー用workflowは存在するが、ユニットテスト・本番ビルド・バックエンド検証をまとめて実行するCIが無かった。他のフェーズを待たずに着手可能。
 
@@ -253,6 +253,8 @@ Postgresマイグレーション4本が実装済み。
 4. mainブランチへのマージ条件として、このCIワークフローの成功を必須にする(GitHubのブランチ保護ルール設定はリポジトリ管理者側の作業なので、Codexはワークフローファイルの作成までを担当し、保護ルール設定は提案として報告する)。
 
 **受け入れ条件**: 任意のブランチへpushした際にGitHub Actions上でテスト・ビルド・backend:validateが自動実行され、成功/失敗がPR画面に表示される。
+
+**完了実績**: PR #3で`Test, build, and validate backend`ジョブが成功し、34件のユニットテスト、本番ビルド、PGliteバックエンド検証がPR画面へ反映された。
 
 ---
 
