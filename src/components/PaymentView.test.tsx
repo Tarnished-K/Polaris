@@ -28,7 +28,16 @@ const settlements: Settlement[] = [{
   amount: 2400,
   grossAmount: 3000,
   offsetAmount: 600,
-  charges: [],
+  charges: [{
+    expenseId: 'expense-hotel',
+    expenseTitle: 'ホテル2泊分',
+    category: 'lodging',
+    amount: 3000,
+    payableAmount: 2400,
+    paymentStatus: 'pending',
+    fromMemberId: 'payer',
+    toMemberId: 'organizer',
+  }],
   offsets: [],
   status: 'pending',
 }]
@@ -41,7 +50,9 @@ const callbacks = {
   onSaveProfile: vi.fn(),
   onSaveLink: vi.fn(),
   onReportSettlement: vi.fn(),
+  onReportSettlementItems: vi.fn(),
   onConfirmSettlement: vi.fn(),
+  onConfirmSettlementItems: vi.fn(),
   onRevertSettlement: vi.fn(),
   onScheduleReminders: vi.fn().mockResolvedValue(1),
   externalAccountLinks: [],
@@ -76,7 +87,10 @@ describe('PaymentView', () => {
     expect(markup).toContain('幹事へ支払う')
     expect(markup).toContain('organizer_1')
     expect(markup).toContain('PayPay請求リンクを開く')
-    expect(markup).toContain('支払い完了を報告')
+    expect(markup).toContain('相手への全額')
+    expect(markup).toContain('イベントを選ぶ')
+    expect(markup).toContain('ホテル2泊分')
+    expect(markup).toContain('全額の支払いを報告')
     expect(markup).not.toContain('全員の支払い進捗')
   })
 

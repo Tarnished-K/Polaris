@@ -37,6 +37,7 @@ export interface AddExpenseInput {
   deviceToken: string
   category: Expense['category']
   title: string
+  note?: string
   amount: number
   payerMemberId: string
   splitMethod: Expense['splitMethod']
@@ -131,7 +132,9 @@ export interface WarikanBackend {
   unfinalizeEvent(eventId: string, force?: boolean): Promise<UnfinalizeEventResult>
   scheduleSettlementReminders(eventId: string): Promise<number>
   reportSettlement(shareToken: string, deviceToken: string | undefined, settlementId: string): Promise<void>
+  reportSettlementItems(shareToken: string, deviceToken: string | undefined, settlementId: string, expenseIds: string[]): Promise<void>
   confirmSettlement(shareToken: string, deviceToken: string | undefined, settlementId: string): Promise<void>
+  confirmSettlementItems(shareToken: string, deviceToken: string | undefined, settlementId: string, expenseIds: string[]): Promise<void>
   revertSettlement(shareToken: string, deviceToken: string | undefined, settlementId: string): Promise<SettlementStatus>
   subscribeToEventChanges(shareToken: string, onChange: () => void): () => void
   broadcastEventChange(shareToken: string): Promise<void>

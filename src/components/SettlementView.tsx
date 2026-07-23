@@ -619,7 +619,6 @@ export function SettlementRelationshipMap({
       <p className="settlement-relationship-map__legend">
         <span className="is-receivable"><i />受け取る</span>
         <span className="is-payable"><i />支払う</span>
-        <span>中立の精算は非表示</span>
       </p>
     </section>
   )

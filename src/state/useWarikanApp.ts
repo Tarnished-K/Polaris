@@ -3,8 +3,10 @@ import type { Dispatch, SetStateAction } from 'react'
 
 import { createDemoData, createFourPersonDemoData } from '../data/demo'
 import {
+  initializeSettlementPaymentItems,
   calculateBalances,
   generatePairwiseSettlements,
+  settlementStatusFromCharges,
   splitExpense,
 } from '../domain/settlement'
 import type {
@@ -24,6 +26,7 @@ export type AppView = 'create' | 'home' | 'expense' | 'dashboard' | 'settlement'
 export interface NewExpenseInput {
   category: Expense['category']
   title: string
+  note?: string
   amount: number
   payerMemberId: string
   targetMemberIds: string[]
@@ -70,7 +73,9 @@ export interface WarikanAppState {
   finalizeEvent: () => void
   unfinalizeEvent: () => void
   reportSettlement: (id: string) => void
+  reportSettlementItems: (id: string, expenseIds: string[]) => void
   confirmSettlement: (id: string) => void
+  confirmSettlementItems: (id: string, expenseIds: string[]) => void
   revertSettlement: (id: string) => void
   resetApp: () => void
 }
@@ -131,7 +136,7 @@ export function readStoredState(
       ...expense,
       status: expense.status ?? ('finalized' as const),
     }))
-    const storedSettlements = settlements as Settlement[]
+    const storedSettlements = (settlements as Settlement[]).map(initializeSettlementPaymentItems)
     const hasLegacySettlements = storedSettlements.some(
       (settlement) =>
         !Array.isArray(settlement.charges) ||
@@ -197,6 +202,7 @@ function validateExpenseInput(
   const uniqueTargetIds = new Set(input.targetMemberIds)
 
   if (!input.title.trim()) throw new Error('支出の内容を入力してください')
+  if ((input.note?.trim().length ?? 0) > 500) throw new Error('メモは500文字以内で入力してください')
   if (!Number.isInteger(input.amount) || input.amount <= 0) {
     throw new Error('金額は1円以上の整数で入力してください')
   }
@@ -476,6 +482,7 @@ export function useWarikanApp(): WarikanAppState {
         id: createRandomId(),
         category: effectiveInput.category,
         title: effectiveInput.title.trim(),
+        note: effectiveInput.note?.trim() || undefined,
         amount: effectiveInput.amount,
         payerMemberId: effectiveInput.payerMemberId,
         targetMemberIds: [...effectiveInput.targetMemberIds],
@@ -520,6 +527,7 @@ export function useWarikanApp(): WarikanAppState {
         ...existing,
         category: input.category,
         title: input.title.trim(),
+        note: input.note?.trim() || undefined,
         amount: input.amount,
         payerMemberId: input.payerMemberId,
         targetMemberIds: [...input.targetMemberIds],
@@ -588,6 +596,7 @@ export function useWarikanApp(): WarikanAppState {
           ...existing,
           category: input.category,
           title: input.title.trim(),
+          note: input.note?.trim() || undefined,
           amount: input.amount,
           targetMemberIds: [...input.targetMemberIds],
           splitMethod: input.splitMethod,
@@ -632,6 +641,7 @@ export function useWarikanApp(): WarikanAppState {
             ...existing,
             category: input.category,
             title: input.title.trim(),
+            note: input.note?.trim() || undefined,
             amount: input.amount,
             targetMemberIds: [...input.targetMemberIds],
             fixedAmounts: { ...(input.fixedAmounts ?? {}) },
@@ -720,13 +730,51 @@ export function useWarikanApp(): WarikanAppState {
         }
 
         changed = true
-        return {
+        return initializeSettlementPaymentItems({
           ...settlement,
           status: 'reported' as const,
           reportedByMemberId: current.currentMemberId ?? undefined,
-        }
+          charges: settlement.charges.map((item) =>
+            (item.payableAmount ?? item.amount) > 0 && (item.paymentStatus ?? 'pending') === 'pending'
+              ? { ...item, paymentStatus: 'reported' as const }
+              : item),
+        })
       })
 
+      return changed ? { ...current, settlements } : current
+    })
+  }, [])
+
+  const reportSettlementItems = useCallback((id: string, expenseIds: string[]) => {
+    const selected = new Set(expenseIds)
+    setState((current) => {
+      if (!current.event || current.event.status !== 'finalized' || selected.size === 0) return current
+      const organizer = isOrganizer(current)
+      let changed = false
+      const settlements = current.settlements.map((rawSettlement) => {
+        const settlement = initializeSettlementPaymentItems(rawSettlement)
+        if (
+          settlement.id !== id ||
+          (!organizer && settlement.fromMemberId !== current.currentMemberId)
+        ) return settlement
+        const charges = settlement.charges.map((item) => {
+          if (
+            selected.has(item.expenseId) &&
+            (item.payableAmount ?? item.amount) > 0 &&
+            item.paymentStatus === 'pending'
+          ) {
+            changed = true
+            return { ...item, paymentStatus: 'reported' as const }
+          }
+          return item
+        })
+        return {
+          ...settlement,
+          charges,
+          status: settlementStatusFromCharges(charges),
+          reportedByMemberId: current.currentMemberId ?? undefined,
+        }
+      })
       return changed ? { ...current, settlements } : current
     })
   }, [])
@@ -747,13 +795,47 @@ export function useWarikanApp(): WarikanAppState {
         }
 
         changed = true
-        return {
+        return initializeSettlementPaymentItems({
           ...settlement,
           status: 'paid' as const,
           confirmedByMemberId: current.currentMemberId ?? undefined,
-        }
+          charges: settlement.charges.map((item) =>
+            (item.payableAmount ?? item.amount) > 0
+              ? { ...item, paymentStatus: 'paid' as const }
+              : item),
+        })
       })
 
+      return changed ? { ...current, settlements } : current
+    })
+  }, [])
+
+  const confirmSettlementItems = useCallback((id: string, expenseIds: string[]) => {
+    const selected = new Set(expenseIds)
+    setState((current) => {
+      if (!current.event || current.event.status !== 'finalized' || selected.size === 0) return current
+      const organizer = isOrganizer(current)
+      let changed = false
+      const settlements = current.settlements.map((rawSettlement) => {
+        const settlement = initializeSettlementPaymentItems(rawSettlement)
+        if (
+          settlement.id !== id ||
+          (!organizer && settlement.toMemberId !== current.currentMemberId)
+        ) return settlement
+        const charges = settlement.charges.map((item) => {
+          if (selected.has(item.expenseId) && item.paymentStatus === 'reported') {
+            changed = true
+            return { ...item, paymentStatus: 'paid' as const }
+          }
+          return item
+        })
+        return {
+          ...settlement,
+          charges,
+          status: settlementStatusFromCharges(charges),
+          confirmedByMemberId: current.currentMemberId ?? undefined,
+        }
+      })
       return changed ? { ...current, settlements } : current
     })
   }, [])
@@ -764,26 +846,30 @@ export function useWarikanApp(): WarikanAppState {
 
       const organizer = isOrganizer(current)
       let changed = false
-      const settlements = current.settlements.map((settlement) => {
+      const settlements = current.settlements.map((rawSettlement) => {
+        const settlement = initializeSettlementPaymentItems(rawSettlement)
         if (settlement.id !== id) return settlement
 
-        if (
-          settlement.status === 'paid' &&
-          (organizer ||
-            settlement.confirmedByMemberId === current.currentMemberId)
-        ) {
+        if (settlement.charges.some((item) => item.paymentStatus === 'paid' && (item.payableAmount ?? item.amount) > 0) &&
+          (organizer || settlement.toMemberId === current.currentMemberId)) {
           changed = true
           const { confirmedByMemberId: _confirmedByMemberId, ...rest } = settlement
-          return { ...rest, status: 'reported' as const }
+          const charges = settlement.charges.map((item) =>
+            item.paymentStatus === 'paid' && (item.payableAmount ?? item.amount) > 0
+              ? { ...item, paymentStatus: 'reported' as const }
+              : item)
+          return { ...rest, charges, status: settlementStatusFromCharges(charges) }
         }
 
-        if (
-          settlement.status === 'reported' &&
-          (organizer || settlement.reportedByMemberId === current.currentMemberId)
-        ) {
+        if (settlement.charges.some((item) => item.paymentStatus === 'reported') &&
+          (organizer || settlement.fromMemberId === current.currentMemberId)) {
           changed = true
           const { reportedByMemberId: _reportedByMemberId, ...rest } = settlement
-          return { ...rest, status: 'pending' as const }
+          const charges = settlement.charges.map((item) =>
+            item.paymentStatus === 'reported'
+              ? { ...item, paymentStatus: 'pending' as const }
+              : item)
+          return { ...rest, charges, status: settlementStatusFromCharges(charges) }
         }
 
         return settlement
@@ -825,7 +911,9 @@ export function useWarikanApp(): WarikanAppState {
     finalizeEvent,
     unfinalizeEvent,
     reportSettlement,
+    reportSettlementItems,
     confirmSettlement,
+    confirmSettlementItems,
     revertSettlement,
     resetApp,
   }

@@ -14,6 +14,7 @@ import { formatYen, getEventDayOptions } from './ui'
 export interface ExpenseDraftInput {
   category: CategoryId
   title: string
+  note?: string
   amount: number
   payerMemberId: string
   targetMemberIds: string[]
@@ -39,6 +40,7 @@ export function ExpenseForm({ event, members, currentMemberId, initialExpense, o
   const [category, setCategory] = useState<CategoryId>(initialCategory)
   const [dayIndex, setDayIndex] = useState<number | undefined>(initialExpense?.dayIndex)
   const [title, setTitle] = useState(initialExpense?.title ?? '')
+  const [note, setNote] = useState(initialExpense?.note ?? '')
   const [amountInput, setAmountInput] = useState(initialExpense ? String(initialExpense.amount) : '')
   const [payerMemberId, setPayerMemberId] = useState(initialExpense?.payerMemberId ?? currentMemberId ?? members[0]?.id ?? '')
   const [targetMemberIds, setTargetMemberIds] = useState(() =>
@@ -103,12 +105,16 @@ export function ExpenseForm({ event, members, currentMemberId, initialExpense, o
             .map((id) => [id, Number.parseInt(fixedAmountInputs[id], 10)]),
         )
       : undefined
-    return { category, title: title.trim(), amount, payerMemberId, targetMemberIds, splitMethod, fixedAmounts, dayIndex }
+    return { category, title: title.trim(), note: note.trim() || undefined, amount, payerMemberId, targetMemberIds, splitMethod, fixedAmounts, dayIndex }
   }
 
   const validateBase = (requireComplete: boolean) => {
     if (!title.trim()) {
       setError('内容を入力してください。')
+      return false
+    }
+    if (note.trim().length > 500) {
+      setError('メモは500文字以内で入力してください。')
       return false
     }
     if (amount <= 0) {
@@ -267,6 +273,19 @@ export function ExpenseForm({ event, members, currentMemberId, initialExpense, o
               </span>
             </label>
           </div>
+
+          <label className="field expense-note-field">
+            <span className="field__label">メモ（任意）</span>
+            <textarea
+              value={note}
+              maxLength={500}
+              rows={3}
+              placeholder="集合場所、予約番号、支出の補足など"
+              disabled={Boolean(initialExpense) && !canManageAllocation}
+              onChange={(changeEvent) => setNote(changeEvent.target.value)}
+            />
+            <small>{note.length} / 500文字</small>
+          </label>
 
           <fieldset className="form-section">
             <legend>支払った人</legend>

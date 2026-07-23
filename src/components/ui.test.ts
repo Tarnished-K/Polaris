@@ -81,9 +81,9 @@ describe('amountToStrokeWidth', () => {
 })
 
 describe('getSettlementRelationshipMapMode', () => {
-  it('6人までは円形、7人以上はエゴセントリック表示にする', () => {
-    expect(getSettlementRelationshipMapMode(0)).toBe('circular')
-    expect(getSettlementRelationshipMapMode(6)).toBe('circular')
+  it('人数にかかわらず自分中心を初期表示にする', () => {
+    expect(getSettlementRelationshipMapMode(0)).toBe('egocentric')
+    expect(getSettlementRelationshipMapMode(6)).toBe('egocentric')
     expect(getSettlementRelationshipMapMode(7)).toBe('egocentric')
     expect(getSettlementRelationshipMapMode(50)).toBe('egocentric')
   })

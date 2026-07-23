@@ -33,7 +33,9 @@ interface PaymentViewProps {
   onSaveProfile: (profile: Omit<PaymentProfile, 'memberId'>) => void | Promise<void>
   onSaveLink: (settlementId: string, paypayRequestUrl?: string) => void | Promise<void>
   onReportSettlement: (settlementId: string) => void | Promise<void>
+  onReportSettlementItems: (settlementId: string, expenseIds: string[]) => void | Promise<void>
   onConfirmSettlement: (settlementId: string) => void | Promise<void>
+  onConfirmSettlementItems: (settlementId: string, expenseIds: string[]) => void | Promise<void>
   onRevertSettlement: (settlementId: string) => void | Promise<void>
   onScheduleReminders: () => number | Promise<number>
   externalAccountLinks: ExternalAccountLink[]
@@ -300,7 +302,9 @@ function PaymentActionCard({
   highlighted,
   onSaveLink,
   onReport,
+  onReportItems,
   onConfirm,
+  onConfirmItems,
   onRevert,
 }: {
   settlement: Settlement
@@ -312,15 +316,34 @@ function PaymentActionCard({
   highlighted?: boolean
   onSaveLink: PaymentViewProps['onSaveLink']
   onReport: () => void | Promise<void>
+  onReportItems: (expenseIds: string[]) => void | Promise<void>
   onConfirm: () => void | Promise<void>
+  onConfirmItems: (expenseIds: string[]) => void | Promise<void>
   onRevert: () => void | Promise<void>
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [copyState, setCopyState] = useState<'idle' | 'amount' | 'paypay' | 'error'>('idle')
+  const [paymentMode, setPaymentMode] = useState<'all' | 'events'>('all')
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([])
   const payerName = memberDisplayName(members, settlement.fromMemberId, currentMemberId)
   const receiverName = memberDisplayName(members, settlement.toMemberId, currentMemberId)
   const status = SETTLEMENT_STATUS_META[settlement.status]
+  const payableItems = settlement.charges.filter((item) => (item.payableAmount ?? item.amount) > 0)
+  const pendingItems = payableItems.filter((item) => (item.paymentStatus ?? settlement.status) === 'pending')
+  const reportedItems = payableItems.filter((item) => (item.paymentStatus ?? settlement.status) === 'reported')
+  const hasItemProgress = payableItems.some((item) => (item.paymentStatus ?? settlement.status) !== 'pending')
+  const activeExpenseIds = paymentMode === 'all'
+    ? pendingItems.map((item) => item.expenseId)
+    : selectedExpenseIds.filter((expenseId) => pendingItems.some((item) => item.expenseId === expenseId))
+  const activeAmount = pendingItems
+    .filter((item) => activeExpenseIds.includes(item.expenseId))
+    .reduce((sum, item) => sum + (item.payableAmount ?? item.amount), 0)
+
+  useEffect(() => {
+    setSelectedExpenseIds((current) =>
+      current.filter((expenseId) => pendingItems.some((item) => item.expenseId === expenseId)))
+  }, [settlement.charges, settlement.status])
 
   useEffect(() => {
     if (!highlighted) return
@@ -387,23 +410,76 @@ function PaymentActionCard({
         </div>
       )}
 
+      <section className="payment-event-breakdown" aria-label="支出イベントごとの支払い">
+        <div className="payment-event-breakdown__heading">
+          <h4>支出イベントごとの内訳</h4>
+          {mode === 'outgoing' && pendingItems.length > 0 && (
+            <div className="payment-scope-toggle" role="group" aria-label="支払い範囲">
+              <button type="button" className={paymentMode === 'all' ? 'is-active' : ''} aria-pressed={paymentMode === 'all'} onClick={() => setPaymentMode('all')}>相手への全額</button>
+              <button type="button" className={paymentMode === 'events' ? 'is-active' : ''} aria-pressed={paymentMode === 'events'} onClick={() => setPaymentMode('events')}>イベントを選ぶ</button>
+            </div>
+          )}
+        </div>
+        {mode === 'outgoing' && paymentMode === 'all' && pendingItems.length > 0 && (
+          <p className="payment-scope-summary">未払いの{pendingItems.length}件をまとめて {formatYen(activeAmount)}</p>
+        )}
+        <div className="payment-event-list">
+          {payableItems.map((item) => {
+            const itemStatus = item.paymentStatus ?? settlement.status
+            const statusMeta = SETTLEMENT_STATUS_META[itemStatus]
+            const selectable = mode === 'outgoing' && paymentMode === 'events' && itemStatus === 'pending'
+            const checked = activeExpenseIds.includes(item.expenseId)
+            return (
+              <label className={`payment-event-item${selectable ? ' is-selectable' : ''}`} key={item.expenseId}>
+                {selectable && (
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => setSelectedExpenseIds((current) =>
+                      current.includes(item.expenseId)
+                        ? current.filter((expenseId) => expenseId !== item.expenseId)
+                        : [...current, item.expenseId])}
+                  />
+                )}
+                <span><strong>{item.expenseTitle}</strong><small>相殺後の支払額</small></span>
+                <b>{formatYen(item.payableAmount ?? item.amount)}</b>
+                <em className={`settlement-status settlement-status--${statusMeta.tone}`}>{statusMeta.label}</em>
+              </label>
+            )
+          })}
+        </div>
+        {mode === 'outgoing' && paymentMode === 'events' && pendingItems.length > 0 && (
+          <p className="payment-scope-summary">選択 {activeExpenseIds.length}件・{formatYen(activeAmount)}</p>
+        )}
+      </section>
+
       <div className="payment-action-card__actions">
         {mode !== 'overview' && (
-          <button type="button" className="button button--outline button--small" onClick={() => void copy('amount', String(settlement.amount))}>
+          <button type="button" className="button button--outline button--small" onClick={() => void copy('amount', String(mode === 'outgoing' && pendingItems.length > 0 ? activeAmount : settlement.amount))} disabled={mode === 'outgoing' && pendingItems.length > 0 && activeExpenseIds.length === 0}>
             {copyState === 'amount' ? '金額をコピー済み' : copyState === 'error' ? 'コピーできませんでした' : '金額をコピー'}
           </button>
         )}
-        {mode === 'outgoing' && settlement.status === 'pending' && (
-          <button type="button" className="button button--success button--small" disabled={busy} onClick={() => void run(onReport)}>
-            {busy ? '更新中…' : '支払い完了を報告'}
+        {mode === 'outgoing' && pendingItems.length > 0 && (
+          <button type="button" className="button button--success button--small" disabled={busy || activeExpenseIds.length === 0} onClick={() => void run(() => onReportItems(activeExpenseIds))}>
+            {busy ? '更新中…' : paymentMode === 'all' ? '全額の支払いを報告' : `${activeExpenseIds.length}件の支払いを報告`}
           </button>
         )}
-        {mode === 'incoming' && settlement.status === 'reported' && (
+        {mode === 'outgoing' && payableItems.length === 0 && settlement.status === 'pending' && (
+          <button type="button" className="button button--success button--small" disabled={busy} onClick={() => void run(onReport)}>
+            {busy ? '更新中…' : '全額の支払いを報告'}
+          </button>
+        )}
+        {mode === 'incoming' && reportedItems.length > 0 && (
+          <button type="button" className="button button--success button--small" disabled={busy} onClick={() => void run(() => onConfirmItems(reportedItems.map((item) => item.expenseId)))}>
+            {busy ? '更新中…' : `${reportedItems.length}件の受け取りを確認`}
+          </button>
+        )}
+        {mode === 'incoming' && payableItems.length === 0 && settlement.status === 'reported' && (
           <button type="button" className="button button--success button--small" disabled={busy} onClick={() => void run(onConfirm)}>
             {busy ? '更新中…' : '受け取りを確認'}
           </button>
         )}
-        {mode === 'overview' && settlement.status !== 'pending' && (
+        {mode === 'overview' && hasItemProgress && (
           <button type="button" className="text-button" disabled={busy} onClick={() => void run(onRevert)}>
             1段階戻す
           </button>
@@ -439,7 +515,9 @@ export function PaymentView({
   onSaveProfile,
   onSaveLink,
   onReportSettlement,
+  onReportSettlementItems,
   onConfirmSettlement,
+  onConfirmSettlementItems,
   onRevertSettlement,
   onScheduleReminders,
   externalAccountLinks,
@@ -495,7 +573,9 @@ export function PaymentView({
           highlighted={settlement.id === initialSettlementId}
           onSaveLink={onSaveLink}
           onReport={() => onReportSettlement(settlement.id)}
+          onReportItems={(expenseIds) => onReportSettlementItems(settlement.id, expenseIds)}
           onConfirm={() => onConfirmSettlement(settlement.id)}
+          onConfirmItems={(expenseIds) => onConfirmSettlementItems(settlement.id, expenseIds)}
           onRevert={() => onRevertSettlement(settlement.id)}
         />
       ))}

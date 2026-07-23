@@ -96,7 +96,9 @@ export function App() {
     finalizeEvent: finalizeLocalEvent,
     unfinalizeEvent: unfinalizeLocalEvent,
     reportSettlement: reportLocalSettlement,
+    reportSettlementItems: reportLocalSettlementItems,
     confirmSettlement: confirmLocalSettlement,
+    confirmSettlementItems: confirmLocalSettlementItems,
     revertSettlement: revertLocalSettlement,
     resetApp,
   } = useWarikanApp()
@@ -386,12 +388,26 @@ export function App() {
       await refreshRemoteEvent()
     } else reportLocalSettlement(settlementId)
   }
+  const reportSettlementItems = async (settlementId: string, expenseIds: string[]) => {
+    if (cloudEvent && backend) {
+      await backend.reportSettlementItems(event.shareToken, eventDeviceToken, settlementId, expenseIds)
+      await backend.broadcastEventChange(event.shareToken)
+      await refreshRemoteEvent()
+    } else reportLocalSettlementItems(settlementId, expenseIds)
+  }
   const confirmSettlement = async (settlementId: string) => {
     if (cloudEvent && backend) {
       await backend.confirmSettlement(event.shareToken, eventDeviceToken, settlementId)
       await backend.broadcastEventChange(event.shareToken)
       await refreshRemoteEvent()
     } else confirmLocalSettlement(settlementId)
+  }
+  const confirmSettlementItems = async (settlementId: string, expenseIds: string[]) => {
+    if (cloudEvent && backend) {
+      await backend.confirmSettlementItems(event.shareToken, eventDeviceToken, settlementId, expenseIds)
+      await backend.broadcastEventChange(event.shareToken)
+      await refreshRemoteEvent()
+    } else confirmLocalSettlementItems(settlementId, expenseIds)
   }
   const revertSettlement = async (settlementId: string) => {
     if (cloudEvent && backend) {
@@ -500,6 +516,7 @@ export function App() {
       members={members}
       currentMemberId={currentMemberId}
       expenses={expenses}
+      settlements={displaySettlements}
       totalSpent={totalSpent}
       onAddExpense={() => {
         setEditingExpenseId(null)
@@ -537,6 +554,7 @@ export function App() {
       deviceToken,
       category: input.category,
       title: input.title,
+      note: input.note,
       amount: input.amount,
       payerMemberId: input.payerMemberId,
       splitMethod: input.splitMethod,
@@ -550,6 +568,7 @@ export function App() {
       editingExpense &&
       editingExpense.category === input.category &&
       editingExpense.title === input.title &&
+      (editingExpense.note ?? '') === (input.note ?? '') &&
       editingExpense.amount === input.amount &&
       editingExpense.payerMemberId === input.payerMemberId &&
       editingExpense.splitMethod === input.splitMethod &&
@@ -660,7 +679,9 @@ export function App() {
           onSaveProfile={savePaymentProfile}
           onSaveLink={saveSettlementPaymentLink}
           onReportSettlement={reportSettlement}
+          onReportSettlementItems={reportSettlementItems}
           onConfirmSettlement={confirmSettlement}
+          onConfirmSettlementItems={confirmSettlementItems}
           onRevertSettlement={revertSettlement}
           onScheduleReminders={scheduleSettlementReminders}
           externalAccountLinks={externalAccountLinks}

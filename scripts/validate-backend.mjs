@@ -68,11 +68,11 @@ try {
     ])],
   )
   await database.query(
-    `select public.add_expense($1, $2, 'transport', 'Final transport', 5000, $3::uuid, 'fixed', 1, $4::jsonb)`,
+    `select public.add_expense($1, $2, 'transport', 'Final transport', 5000, $3::uuid, 'fixed', 1, $4::jsonb, $5)`,
     [shareToken, deviceToken, payer.id, JSON.stringify([
       { memberId: payer.id, fixedAmount: 2000 },
       { memberId: proxy.id, fixedAmount: 3000 },
-    ])],
+    ]), 'Airport pickup at 08:30'],
   )
 
   const statuses = await database.query('select title, status::text from public.expenses order by created_at')
@@ -154,6 +154,41 @@ try {
   const settlementId = settlementResult.rows[0].id
   assert.equal(settlementResult.rows[0].from_member_id, proxy.id)
   assert.equal(settlementResult.rows[0].to_member_id, payer.id)
+  const finalizedState = await database.query('select public.get_event_state($1) as state', [shareToken])
+  assert.equal(
+    finalizedState.rows[0].state.expenses.find((expense) => expense.title === 'Final transport').note,
+    'Airport pickup at 08:30',
+  )
+  const paymentItems = await database.query(
+    `select expense_id, payable_amount, payment_status::text
+     from public.settlement_items
+     where settlement_id = $1::uuid and direction = 'charge'
+     order by expense_id`,
+    [settlementId],
+  )
+  assert.equal(paymentItems.rows.length, 2)
+  assert.equal(paymentItems.rows.reduce((sum, item) => sum + item.payable_amount, 0), 4000)
+  assert.ok(paymentItems.rows.every((item) => item.payment_status === 'pending'))
+  await database.query(
+    'select public.report_settlement_items($1, null, $2::uuid, $3::uuid[])',
+    [shareToken, settlementId, [paymentItems.rows[0].expense_id]],
+  )
+  const partialItems = await database.query(
+    `select payment_status::text from public.settlement_items
+     where settlement_id = $1::uuid and direction = 'charge'
+     order by expense_id`,
+    [settlementId],
+  )
+  assert.deepEqual(partialItems.rows.map((item) => item.payment_status), ['reported', 'pending'])
+  const partialSettlement = await database.query('select status::text from public.settlements where id = $1::uuid', [settlementId])
+  assert.equal(partialSettlement.rows[0].status, 'pending')
+  await database.query('select public.revert_settlement($1, null, $2::uuid)', [shareToken, settlementId])
+  const resetItems = await database.query(
+    `select payment_status::text from public.settlement_items
+     where settlement_id = $1::uuid and direction = 'charge'`,
+    [settlementId],
+  )
+  assert.ok(resetItems.rows.every((item) => item.payment_status === 'pending'))
   const finalizedJob = await database.query(
     "select notification_type, payload from public.notification_jobs where notification_type = 'settlement_finalized'",
   )

@@ -5,6 +5,7 @@ import {
   type CategoryId,
   type Expense,
   type Member,
+  type Settlement,
   type WarikanEvent,
 } from '../domain/types'
 import type { PendingExpense } from '../state/pendingExpenseQueue'
@@ -23,6 +24,7 @@ interface HomeViewProps {
   members: Member[]
   currentMemberId: string | null
   expenses: Expense[]
+  settlements: Settlement[]
   totalSpent: number
   onAddExpense: () => void
   onOpenSettlement: () => void
@@ -41,12 +43,16 @@ function ExpenseRow({
   expense,
   members,
   currentMemberId,
+  settlements,
+  eventFinalized,
   canEditExpense,
   onEditExpense,
 }: {
   expense: Expense
   members: Member[]
   currentMemberId: string | null
+  settlements: Settlement[]
+  eventFinalized: boolean
   canEditExpense: boolean
   onEditExpense: (expenseId: string) => void
 }) {
@@ -59,6 +65,32 @@ function ExpenseRow({
     : 0
   const enteredCount = Object.keys(expense.fixedAmounts ?? {}).filter((id) => expense.targetMemberIds.includes(id)).length
   const meta = CATEGORY_META[expense.category]
+  const paymentMeta = (targetMemberId: string) => {
+    if (targetMemberId === expense.payerMemberId) return { label: '立替者分', tone: 'self' }
+    if (expense.status === 'draft') return { label: '内訳未確定', tone: 'draft' }
+    if (!eventFinalized) return { label: '精算前', tone: 'draft' }
+    const charge = settlements
+      .filter((settlement) =>
+        settlement.fromMemberId === targetMemberId &&
+        settlement.toMemberId === expense.payerMemberId)
+      .flatMap((settlement) => settlement.charges)
+      .find((item) => item.expenseId === expense.id)
+    if (charge) {
+      const payableAmount = charge.payableAmount ?? charge.amount
+      if (payableAmount === 0) return { label: '相殺済み', tone: 'paid' }
+      if (charge.paymentStatus === 'paid') return { label: '受取確認済み', tone: 'paid' }
+      if (charge.paymentStatus === 'reported') return { label: '支払報告済み', tone: 'reported' }
+      return { label: '支払い前', tone: 'pending' }
+    }
+    const offset = settlements
+      .flatMap((settlement) => settlement.offsets)
+      .find((item) =>
+        item.expenseId === expense.id &&
+        item.fromMemberId === targetMemberId &&
+        item.toMemberId === expense.payerMemberId)
+    if (offset) return { label: '相殺に反映', tone: 'offset' }
+    return { label: '精算前', tone: 'draft' }
+  }
   const rowStyle = { '--expense-accent': meta.color, '--expense-tint': meta.background } as CSSProperties
   return (
     <article className="expense-row" style={rowStyle}>
@@ -78,12 +110,19 @@ function ExpenseRow({
             : `金額指定・${enteredCount}/${targetMembers.length}人入力済み`}
           </span>
         </div>
+        {expense.note && <p className="expense-row__note"><span>メモ</span>{expense.note}</p>}
         <div className="expense-row__targets">
           <span className="expense-row__meta-label">立替対象</span>
           <div className="expense-row__member-pills">
             {targetMembers.length > 0 ? targetMembers.map((target) => {
               const index = members.findIndex((member) => member.id === target.id)
-              return <span style={memberPillStyle(index)} key={target.id}>{target.name}</span>
+              const payment = paymentMeta(target.id)
+              return (
+                <span className="expense-target-payment" style={memberPillStyle(index)} key={target.id}>
+                  <b>{target.name}</b>
+                  <small className={`expense-target-payment__status is-${payment.tone}`}>{payment.label}</small>
+                </span>
+              )
             }) : <em>未設定</em>}
           </div>
         </div>
@@ -145,6 +184,7 @@ function PendingExpenseRow({
           <strong>{formatYen(pending.input.amount)}</strong>
         </div>
         <p>立替者: {payer}</p>
+        {pending.input.note && <p className="pending-expense__note">メモ: {pending.input.note}</p>}
         <p className="pending-expense__status">
           {pending.status === 'sending' && <span className="pending-expense__spinner" aria-hidden="true" />}
           {statusLabel}
@@ -168,6 +208,7 @@ export function HomeView({
   members,
   currentMemberId,
   expenses,
+  settlements,
   totalSpent,
   onAddExpense,
   onOpenSettlement,
@@ -327,6 +368,8 @@ export function HomeView({
                           expense={expense}
                           members={members}
                           currentMemberId={currentMemberId}
+                          settlements={settlements}
+                          eventFinalized={event.status === 'finalized'}
                           canEditExpense={event.status === 'active' && (isOrganizer || expense.payerMemberId === currentMemberId || (expense.status === 'draft' && expense.targetMemberIds.includes(currentMemberId ?? '')))}
                           onEditExpense={onEditExpense}
                           key={expense.id}
@@ -343,6 +386,8 @@ export function HomeView({
                     expense={expense}
                     members={members}
                     currentMemberId={currentMemberId}
+                    settlements={settlements}
+                    eventFinalized={event.status === 'finalized'}
                     canEditExpense={event.status === 'active' && (isOrganizer || expense.payerMemberId === currentMemberId || (expense.status === 'draft' && expense.targetMemberIds.includes(currentMemberId ?? '')))}
                     onEditExpense={onEditExpense}
                     key={expense.id}

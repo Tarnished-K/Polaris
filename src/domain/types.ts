@@ -33,6 +33,7 @@ export interface Expense {
   id: string
   category: CategoryId
   title: string
+  note?: string
   amount: number
   payerMemberId: string
   targetMemberIds: string[]
@@ -49,6 +50,8 @@ export interface SettlementBreakdownItem {
   expenseTitle: string
   category: CategoryId
   amount: number
+  payableAmount?: number
+  paymentStatus?: SettlementStatus
   fromMemberId: string
   toMemberId: string
   dayIndex?: number

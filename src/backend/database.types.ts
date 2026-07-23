@@ -14,27 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      assistant_rate_limit_events: {
-        Row: {
-          external_user_hash: string
-          id: number
-          occurred_at: string
-          provider: Database["public"]["Enums"]["integration_provider"]
-        }
-        Insert: {
-          external_user_hash: string
-          id?: never
-          occurred_at?: string
-          provider: Database["public"]["Enums"]["integration_provider"]
-        }
-        Update: {
-          external_user_hash?: string
-          id?: never
-          occurred_at?: string
-          provider?: Database["public"]["Enums"]["integration_provider"]
-        }
-        Relationships: []
-      }
       activity_logs: {
         Row: {
           action: string
@@ -79,6 +58,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      assistant_rate_limit_events: {
+        Row: {
+          external_user_hash: string
+          id: number
+          occurred_at: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+        }
+        Insert: {
+          external_user_hash: string
+          id?: never
+          occurred_at?: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+        }
+        Update: {
+          external_user_hash?: string
+          id?: never
+          occurred_at?: string
+          provider?: Database["public"]["Enums"]["integration_provider"]
+        }
+        Relationships: []
       }
       event_integrations: {
         Row: {
@@ -217,6 +217,7 @@ export type Database = {
           day_index: number | null
           event_id: string
           id: string
+          note: string | null
           payer_member_id: string
           split_method: Database["public"]["Enums"]["split_method"]
           status: Database["public"]["Enums"]["expense_status"]
@@ -231,6 +232,7 @@ export type Database = {
           day_index?: number | null
           event_id: string
           id?: string
+          note?: string | null
           payer_member_id: string
           split_method?: Database["public"]["Enums"]["split_method"]
           status?: Database["public"]["Enums"]["expense_status"]
@@ -245,6 +247,7 @@ export type Database = {
           day_index?: number | null
           event_id?: string
           id?: string
+          note?: string | null
           payer_member_id?: string
           split_method?: Database["public"]["Enums"]["split_method"]
           status?: Database["public"]["Enums"]["expense_status"]
@@ -604,18 +607,24 @@ export type Database = {
           amount: number
           direction: Database["public"]["Enums"]["settlement_item_direction"]
           expense_id: string
+          payable_amount: number
+          payment_status: Database["public"]["Enums"]["settlement_status"]
           settlement_id: string
         }
         Insert: {
           amount: number
           direction: Database["public"]["Enums"]["settlement_item_direction"]
           expense_id: string
+          payable_amount?: number
+          payment_status?: Database["public"]["Enums"]["settlement_status"]
           settlement_id: string
         }
         Update: {
           amount?: number
           direction?: Database["public"]["Enums"]["settlement_item_direction"]
           expense_id?: string
+          payable_amount?: number
+          payment_status?: Database["public"]["Enums"]["settlement_status"]
           settlement_id?: string
         }
         Relationships: [
@@ -670,33 +679,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      webhook_receipts: {
-        Row: {
-          event_timestamp: string
-          external_event_id: string
-          id: number
-          payload_hash: string
-          provider: Database["public"]["Enums"]["integration_provider"]
-          received_at: string
-        }
-        Insert: {
-          event_timestamp: string
-          external_event_id: string
-          id?: never
-          payload_hash: string
-          provider: Database["public"]["Enums"]["integration_provider"]
-          received_at?: string
-        }
-        Update: {
-          event_timestamp?: string
-          external_event_id?: string
-          id?: never
-          payload_hash?: string
-          provider?: Database["public"]["Enums"]["integration_provider"]
-          received_at?: string
-        }
-        Relationships: []
       }
       settlements: {
         Row: {
@@ -782,6 +764,33 @@ export type Database = {
           },
         ]
       }
+      webhook_receipts: {
+        Row: {
+          event_timestamp: string
+          external_event_id: string
+          id: number
+          payload_hash: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+          received_at: string
+        }
+        Insert: {
+          event_timestamp: string
+          external_event_id: string
+          id?: never
+          payload_hash: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+          received_at?: string
+        }
+        Update: {
+          event_timestamp?: string
+          external_event_id?: string
+          id?: never
+          payload_hash?: string
+          provider?: Database["public"]["Enums"]["integration_provider"]
+          received_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -793,6 +802,7 @@ export type Database = {
           p_category: Database["public"]["Enums"]["expense_category"]
           p_day_index: number
           p_device_token: string
+          p_note?: string
           p_payer_member_id: string
           p_share_token: string
           p_split_method: Database["public"]["Enums"]["split_method"]
@@ -809,6 +819,27 @@ export type Database = {
         }
         Returns: Json
       }
+      claim_notification_jobs: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          id: string
+          integration_id: string
+          max_attempts: number
+          notification_type: string
+          payload: Json
+        }[]
+      }
+      claim_webhook_event: {
+        Args: {
+          p_external_event_id: string
+          p_max_age_seconds?: number
+          p_payload_hash: string
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+          p_timestamp_ms: number
+        }
+        Returns: boolean
+      }
       confirm_settlement: {
         Args: {
           p_device_token: string
@@ -817,6 +848,40 @@ export type Database = {
         }
         Returns: undefined
       }
+      confirm_settlement_for_external_account: {
+        Args: {
+          p_external_user_hash: string
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+          p_settlement_id: string
+        }
+        Returns: undefined
+      }
+      confirm_settlement_items: {
+        Args: {
+          p_device_token: string
+          p_expense_ids: string[]
+          p_settlement_id: string
+          p_share_token: string
+        }
+        Returns: undefined
+      }
+      consume_assistant_rate_limit: {
+        Args: {
+          p_external_user_hash: string
+          p_limit?: number
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+          p_window_seconds?: number
+        }
+        Returns: boolean
+      }
+      consume_member_link_code: {
+        Args: {
+          p_code: string
+          p_external_user_hash: string
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+        }
+        Returns: Json
+      }
       create_event: {
         Args: {
           p_capacity?: number
@@ -824,6 +889,14 @@ export type Database = {
           p_event_type: Database["public"]["Enums"]["event_type"]
           p_start_date: string
           p_title: string
+        }
+        Returns: Json
+      }
+      create_member_link_code: {
+        Args: {
+          p_device_token: string
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+          p_share_token: string
         }
         Returns: Json
       }
@@ -844,65 +917,14 @@ export type Database = {
         }
         Returns: undefined
       }
-      create_member_link_code: {
-        Args: {
-          p_device_token: string
-          p_provider: Database["public"]["Enums"]["integration_provider"]
-          p_share_token: string
-        }
-        Returns: Json
-      }
-      claim_webhook_event: {
-        Args: {
-          p_external_event_id: string
-          p_max_age_seconds?: number
-          p_payload_hash: string
-          p_provider: Database["public"]["Enums"]["integration_provider"]
-          p_timestamp_ms: number
-        }
-        Returns: boolean
-      }
-      consume_member_link_code: {
-        Args: {
-          p_code: string
-          p_external_user_hash: string
-          p_provider: Database["public"]["Enums"]["integration_provider"]
-        }
-        Returns: Json
-      }
-      consume_assistant_rate_limit: {
-        Args: {
-          p_external_user_hash: string
-          p_limit?: number
-          p_provider: Database["public"]["Enums"]["integration_provider"]
-          p_window_seconds?: number
-        }
-        Returns: boolean
-      }
-      confirm_settlement_for_external_account: {
-        Args: {
-          p_external_user_hash: string
-          p_provider: Database["public"]["Enums"]["integration_provider"]
-          p_settlement_id: string
-        }
-        Returns: undefined
-      }
-      get_external_account_links: {
-        Args: { p_device_token: string; p_share_token: string }
-        Returns: Json
-      }
       get_event_state:
         | { Args: { p_share_token: string }; Returns: Json }
         | {
             Args: { p_device_token: string; p_share_token: string }
             Returns: Json
           }
-      get_payment_state: {
-        Args: { p_device_token?: string; p_share_token: string }
-        Returns: Json
-      }
-      get_settlement_status_for_bot: {
-        Args: { p_share_token: string }
+      get_external_account_links: {
+        Args: { p_device_token: string; p_share_token: string }
         Returns: Json
       }
       get_member_settlement_status_for_bot: {
@@ -910,6 +932,14 @@ export type Database = {
           p_external_user_hash: string
           p_provider: Database["public"]["Enums"]["integration_provider"]
         }
+        Returns: Json
+      }
+      get_payment_state: {
+        Args: { p_device_token?: string; p_share_token: string }
+        Returns: Json
+      }
+      get_settlement_status_for_bot: {
+        Args: { p_share_token: string }
         Returns: Json
       }
       join_event: {
@@ -936,13 +966,13 @@ export type Database = {
         }
         Returns: string
       }
-      organizer_remove_member: {
-        Args: { p_event_id: string; p_member_id: string }
-        Returns: undefined
-      }
       organizer_regenerate_share_token: {
         Args: { p_event_id: string }
         Returns: Json
+      }
+      organizer_remove_member: {
+        Args: { p_event_id: string; p_member_id: string }
+        Returns: undefined
       }
       organizer_update_event: {
         Args: {
@@ -998,6 +1028,15 @@ export type Database = {
         }
         Returns: undefined
       }
+      report_settlement_items: {
+        Args: {
+          p_device_token: string
+          p_expense_ids: string[]
+          p_settlement_id: string
+          p_share_token: string
+        }
+        Returns: undefined
+      }
       revert_settlement: {
         Args: {
           p_device_token: string
@@ -1028,6 +1067,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      unfinalize_event: {
+        Args: { p_event_id: string; p_force?: boolean }
+        Returns: Json
+      }
       unlink_external_account: {
         Args: {
           p_device_token: string
@@ -1036,8 +1079,20 @@ export type Database = {
         }
         Returns: boolean
       }
-      unfinalize_event: {
-        Args: { p_event_id: string; p_force?: boolean }
+      update_expense: {
+        Args: {
+          p_amount: number
+          p_category: Database["public"]["Enums"]["expense_category"]
+          p_day_index: number
+          p_device_token: string
+          p_expense_id: string
+          p_note?: string
+          p_payer_member_id: string
+          p_share_token: string
+          p_split_method: Database["public"]["Enums"]["split_method"]
+          p_targets: Json
+          p_title: string
+        }
         Returns: Json
       }
       upsert_payment_profile: {
@@ -1046,21 +1101,6 @@ export type Database = {
           p_device_token: string
           p_paypay_id?: string
           p_share_token: string
-        }
-        Returns: Json
-      }
-      update_expense: {
-        Args: {
-          p_amount: number
-          p_category: Database["public"]["Enums"]["expense_category"]
-          p_day_index: number
-          p_device_token: string
-          p_expense_id: string
-          p_payer_member_id: string
-          p_share_token: string
-          p_split_method: Database["public"]["Enums"]["split_method"]
-          p_targets: Json
-          p_title: string
         }
         Returns: Json
       }

@@ -65,6 +65,7 @@ function expenseParams(input: AddExpenseInput | ExpenseMutationInput) {
     p_device_token: input.deviceToken || null,
     p_category: input.category,
     p_title: input.title,
+    p_note: input.note?.trim() || null,
     p_amount: input.amount,
     p_payer_member_id: input.payerMemberId,
     p_split_method: input.splitMethod,
@@ -319,14 +320,14 @@ export function createWarikanBackend(config: SupabaseConfig, client?: WarikanSup
     async addExpense(input: AddExpenseInput) {
       const { data, error } = await supabase.rpc(
         'add_expense',
-        allowSqlNull<'add_expense', 'p_device_token' | 'p_day_index'>(expenseParams(input)),
+        allowSqlNull<'add_expense', 'p_device_token' | 'p_day_index' | 'p_note'>(expenseParams(input)),
       )
       return requireData(data as AddExpenseResult | null, error)
     },
 
     async updateExpense(input: ExpenseMutationInput) {
       const { data, error } = await supabase.rpc('update_expense', {
-        ...allowSqlNull<'update_expense', 'p_device_token' | 'p_day_index'>({
+        ...allowSqlNull<'update_expense', 'p_device_token' | 'p_day_index' | 'p_note'>({
           ...expenseParams(input),
           p_expense_id: input.expenseId,
         }),
@@ -398,6 +399,19 @@ export function createWarikanBackend(config: SupabaseConfig, client?: WarikanSup
       requireSuccess(error)
     },
 
+    async reportSettlementItems(shareToken, deviceToken, settlementId, expenseIds) {
+      const { error } = await supabase.rpc(
+        'report_settlement_items',
+        allowSqlNull<'report_settlement_items', 'p_device_token'>({
+          p_share_token: shareToken,
+          p_device_token: deviceToken ?? null,
+          p_settlement_id: settlementId,
+          p_expense_ids: expenseIds,
+        }),
+      )
+      requireSuccess(error)
+    },
+
     async confirmSettlement(shareToken, deviceToken, settlementId) {
       const { error } = await supabase.rpc(
         'confirm_settlement',
@@ -405,6 +419,19 @@ export function createWarikanBackend(config: SupabaseConfig, client?: WarikanSup
           p_share_token: shareToken,
           p_device_token: deviceToken ?? null,
           p_settlement_id: settlementId,
+        }),
+      )
+      requireSuccess(error)
+    },
+
+    async confirmSettlementItems(shareToken, deviceToken, settlementId, expenseIds) {
+      const { error } = await supabase.rpc(
+        'confirm_settlement_items',
+        allowSqlNull<'confirm_settlement_items', 'p_device_token'>({
+          p_share_token: shareToken,
+          p_device_token: deviceToken ?? null,
+          p_settlement_id: settlementId,
+          p_expense_ids: expenseIds,
         }),
       )
       requireSuccess(error)

@@ -32,15 +32,12 @@ export const allocatePercentages = (amounts: number[]) => {
   return allocated
 }
 
-export const SETTLEMENT_RELATIONSHIP_MAP_MAX_MEMBERS = 6
-
 export type SettlementRelationshipMapMode = 'circular' | 'egocentric'
 
-/** Keeps small groups readable as a whole and large groups centered on one member. */
+/** Starts every map from the current participant's point of view. */
 export const getSettlementRelationshipMapMode = (
-  memberCount: number,
-): SettlementRelationshipMapMode =>
-  memberCount <= SETTLEMENT_RELATIONSHIP_MAP_MAX_MEMBERS ? 'circular' : 'egocentric'
+  _memberCount: number,
+): SettlementRelationshipMapMode => 'egocentric'
 
 /** Maps settlement amounts to a restrained 1.5–5px visual weight. */
 export const amountToStrokeWidth = (amount: number, maxAmount: number) => {

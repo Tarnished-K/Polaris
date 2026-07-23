@@ -2,12 +2,54 @@ import { describe, expect, it } from 'vitest'
 
 import type { Expense, Member, Settlement } from './types'
 import {
+  allocateSettlementChargePayments,
   calculateBalances,
   generatePairwiseSettlements,
   generateSettlements,
+  settlementStatusFromCharges,
   paidCounterpartyIds,
   splitExpense,
 } from './settlement'
+
+describe('settlement item payments', () => {
+  const charge = (expenseId: string, amount: number) => ({
+    expenseId,
+    expenseTitle: expenseId,
+    category: 'food' as const,
+    amount,
+    fromMemberId: 'a',
+    toMemberId: 'b',
+  })
+
+  it('相殺後の支払総額を支出ごとに最大剰余法で按分する', () => {
+    const charges = allocateSettlementChargePayments(
+      [charge('one', 2), charge('two', 1)],
+      2,
+      3,
+    )
+
+    expect(charges.map(({ payableAmount, paymentStatus }) => ({ payableAmount, paymentStatus }))).toEqual([
+      { payableAmount: 1, paymentStatus: 'pending' },
+      { payableAmount: 1, paymentStatus: 'pending' },
+    ])
+    expect(charges.reduce((sum, item) => sum + (item.payableAmount ?? 0), 0)).toBe(2)
+  })
+
+  it('一部支払いでは親精算を未払い、全報告で報告済み、全確認で完了にする', () => {
+    const charges = allocateSettlementChargePayments(
+      [charge('one', 600), charge('two', 400)],
+      800,
+      1_000,
+    )
+    expect(settlementStatusFromCharges(charges)).toBe('pending')
+    expect(settlementStatusFromCharges(charges.map((item, index) => ({
+      ...item,
+      paymentStatus: index === 0 ? 'reported' : item.paymentStatus,
+    })))).toBe('pending')
+    expect(settlementStatusFromCharges(charges.map((item) => ({ ...item, paymentStatus: 'reported' })))).toBe('reported')
+    expect(settlementStatusFromCharges(charges.map((item) => ({ ...item, paymentStatus: 'paid' })))).toBe('paid')
+  })
+})
 
 const members: Member[] = [
   { id: 'a', name: 'A' },

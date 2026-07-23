@@ -19,6 +19,79 @@ export interface PairwiseSettlementTransfer extends SettlementTransfer {
   offsets: SettlementBreakdownItem[]
 }
 
+export function allocateSettlementChargePayments(
+  charges: SettlementBreakdownItem[],
+  netAmount: number,
+  grossAmount: number,
+  paymentStatus: Settlement['status'] = 'pending',
+): SettlementBreakdownItem[] {
+  if (charges.length === 0) return []
+  if (netAmount <= 0 || grossAmount <= 0) {
+    return charges.map((item) => ({ ...item, payableAmount: 0, paymentStatus: 'paid' }))
+  }
+
+  const allocations = charges.map((item, index) => {
+    const numerator = item.amount * netAmount
+    return {
+      index,
+      base: Math.floor(numerator / grossAmount),
+      remainder: numerator % grossAmount,
+    }
+  })
+  let remainder = netAmount - allocations.reduce((sum, allocation) => sum + allocation.base, 0)
+  const order = [...allocations].sort(
+    (left, right) => right.remainder - left.remainder || left.index - right.index,
+  )
+  for (let index = 0; index < order.length && remainder > 0; index += 1, remainder -= 1) {
+    order[index].base += 1
+  }
+
+  return charges.map((item, index) => {
+    const payableAmount = allocations[index].base
+    return {
+      ...item,
+      payableAmount,
+      paymentStatus: payableAmount === 0 ? 'paid' : paymentStatus,
+    }
+  })
+}
+
+export function settlementStatusFromCharges(
+  charges: SettlementBreakdownItem[],
+): Settlement['status'] {
+  const payable = charges.filter((item) => (item.payableAmount ?? item.amount) > 0)
+  if (payable.length === 0 || payable.every((item) => item.paymentStatus === 'paid')) return 'paid'
+  if (payable.some((item) => (item.paymentStatus ?? 'pending') === 'pending')) return 'pending'
+  return 'reported'
+}
+
+export function initializeSettlementPaymentItems(settlement: Settlement): Settlement {
+  const needsAllocation = settlement.charges.some(
+    (item) => item.payableAmount === undefined || item.paymentStatus === undefined,
+  )
+  if (!needsAllocation) return settlement
+
+  const defaultStatus = settlement.status === 'paid'
+    ? 'paid'
+    : settlement.status === 'reported'
+      ? 'reported'
+      : 'pending'
+  return {
+    ...settlement,
+    charges: allocateSettlementChargePayments(
+      settlement.charges,
+      settlement.amount,
+      settlement.grossAmount,
+      defaultStatus,
+    ),
+    offsets: settlement.offsets.map((item) => ({
+      ...item,
+      payableAmount: 0,
+      paymentStatus: 'paid',
+    })),
+  }
+}
+
 export type MemberAmounts = Record<string, number>
 
 export function paidCounterpartyIds(settlements: Settlement[], memberId: string | null) {
@@ -336,14 +409,24 @@ export function generatePairwiseSettlements(
 
     if (!charges) continue
 
+    const netAmount = Math.abs(forwardAmount - reverseAmount)
     transfers.push({
       fromMemberId: charges.fromMemberId,
       toMemberId: charges.toMemberId,
-      amount: Math.abs(forwardAmount - reverseAmount),
+      amount: netAmount,
       grossAmount: charges.amount,
       offsetAmount: offsets?.amount ?? 0,
-      charges: charges.items,
-      offsets: offsets?.items ?? [],
+      charges: allocateSettlementChargePayments(
+        charges.items,
+        netAmount,
+        charges.amount,
+        netAmount === 0 ? 'paid' : 'pending',
+      ),
+      offsets: (offsets?.items ?? []).map((item) => ({
+        ...item,
+        payableAmount: 0,
+        paymentStatus: 'paid',
+      })),
     })
   }
 

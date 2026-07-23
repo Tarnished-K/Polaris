@@ -2,7 +2,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(11);
+select plan(22);
 
 insert into auth.users(id, email, created_at, updated_at)
 values ('30000000-0000-0000-0000-000000000001', 'payment-owner@example.com', now(), now());
@@ -31,7 +31,25 @@ select public.add_expense(
   receiver.id,
   'fixed',
   null,
-  jsonb_build_array(jsonb_build_object('memberId', payer.id, 'fixedAmount', 5000))
+  jsonb_build_array(jsonb_build_object('memberId', payer.id, 'fixedAmount', 5000)),
+  '夕食会場で現地精算'
+)
+from public.events event
+join public.members payer on payer.event_id = event.id and payer.name = '支払う人'
+join public.members receiver on receiver.event_id = event.id and receiver.name = '受け取る人'
+where event.title = '支払い導線テスト';
+
+select public.add_expense(
+  event.share_token,
+  repeat('r', 43),
+  'transport',
+  '受取人の交通立て替え',
+  3000,
+  receiver.id,
+  'fixed',
+  null,
+  jsonb_build_array(jsonb_build_object('memberId', payer.id, 'fixedAmount', 3000)),
+  null
 )
 from public.events event
 join public.members payer on payer.event_id = event.id and payer.name = '支払う人'
@@ -142,6 +160,112 @@ select is(
   (select count(*)::integer from public.settlement_payment_links),
   0,
   'receiver can remove a request link'
+);
+
+select is(
+  (select note from public.expenses where title = '受取人の立て替え'),
+  '夕食会場で現地精算',
+  'expense note is stored'
+);
+
+select is(
+  (
+    select sum(item.payable_amount)::integer
+    from public.settlement_items item
+    join public.settlements settlement on settlement.id = item.settlement_id
+    join public.events event on event.id = settlement.event_id
+    where event.title = '支払い導線テスト' and item.direction = 'charge'
+  ),
+  8000,
+  'per-expense payable amounts add up to the settlement total'
+);
+
+select lives_ok(
+  format(
+    'select public.report_settlement_items(%L,%L,%L::uuid,array[%L::uuid])',
+    event.share_token, repeat('p', 43), settlement.id, expense.id
+  ),
+  'payer can report one selected expense'
+)
+from public.events event
+join public.settlements settlement on settlement.event_id = event.id
+join public.expenses expense on expense.event_id = event.id and expense.title = '受取人の立て替え'
+where event.title = '支払い導線テスト';
+
+select is(
+  (select status::text from public.settlements settlement join public.events event on event.id = settlement.event_id where event.title = '支払い導線テスト'),
+  'pending',
+  'parent settlement remains pending while another expense is unpaid'
+);
+
+select is(
+  (
+    select item.payment_status::text
+    from public.settlement_items item
+    join public.expenses expense on expense.id = item.expense_id
+    where expense.title = '受取人の立て替え' and item.direction = 'charge'
+  ),
+  'reported',
+  'selected expense is marked reported'
+);
+
+select lives_ok(
+  format(
+    'select public.confirm_settlement_items(%L,%L,%L::uuid,array[%L::uuid])',
+    event.share_token, repeat('r', 43), settlement.id, expense.id
+  ),
+  'receiver can confirm the selected expense'
+)
+from public.events event
+join public.settlements settlement on settlement.event_id = event.id
+join public.expenses expense on expense.event_id = event.id and expense.title = '受取人の立て替え'
+where event.title = '支払い導線テスト';
+
+select is(
+  (
+    select item.payment_status::text
+    from public.settlement_items item
+    join public.expenses expense on expense.id = item.expense_id
+    where expense.title = '受取人の立て替え' and item.direction = 'charge'
+  ),
+  'paid',
+  'confirmed expense is marked paid'
+);
+
+select lives_ok(
+  format(
+    'select public.report_settlement_items(%L,%L,%L::uuid,array[%L::uuid])',
+    event.share_token, repeat('p', 43), settlement.id, expense.id
+  ),
+  'payer can report the remaining expense'
+)
+from public.events event
+join public.settlements settlement on settlement.event_id = event.id
+join public.expenses expense on expense.event_id = event.id and expense.title = '受取人の交通立て替え'
+where event.title = '支払い導線テスト';
+
+select is(
+  (select status::text from public.settlements settlement join public.events event on event.id = settlement.event_id where event.title = '支払い導線テスト'),
+  'reported',
+  'parent settlement becomes reported when no expense remains pending'
+);
+
+select lives_ok(
+  format(
+    'select public.confirm_settlement_items(%L,%L,%L::uuid,array[%L::uuid])',
+    event.share_token, repeat('r', 43), settlement.id, expense.id
+  ),
+  'receiver can confirm the remaining expense'
+)
+from public.events event
+join public.settlements settlement on settlement.event_id = event.id
+join public.expenses expense on expense.event_id = event.id and expense.title = '受取人の交通立て替え'
+where event.title = '支払い導線テスト';
+
+select is(
+  (select status::text from public.settlements settlement join public.events event on event.id = settlement.event_id where event.title = '支払い導線テスト'),
+  'paid',
+  'parent settlement becomes paid after every expense is confirmed'
 );
 
 select * from finish();

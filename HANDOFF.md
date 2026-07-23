@@ -1,16 +1,17 @@
 # Warikan Web MVP 引き継ぎ
 
-更新日: 2026-07-23
+更新日: 2026-07-24
 
-## 最終ステータス（2026-07-23）
+## 最終ステータス（2026-07-24）
 
 - フェーズ0〜2、4〜6は実装・自動検証・必要な本番反映まで完了。フェーズ3は本番URL／OAuth／クラウドイベント／Realtime／PWA配信まで確認済みで、異なる物理端末からのホーム画面追加を含む最終受け入れだけが残る。
 - フェーズ7はオフライン再送、Sentry本番受け入れ、共有URLローテーションまで実装済み。残る最終受け入れは実スマートフォンのオフライン→オンライン復帰。
 - バックログ6.1（関係マップ）と6.3（予約語バリデーション）は実装済み。6.2（債務マトリクス）は一度実装したが、分かりにくいため2026-07-23にUIから撤去し、関係マップへ一本化した。
 - 通知は暗号化されたDiscord／LINE登録UI、outbox、dispatcherまで本番反映済み。実WebhookとLINE channel access tokenを使う外部配送だけ未確認。
 - フェーズ8「支払い・受け取りアクションハブ」は実装・自動検証・クラウドDB反映まで完了した。支払い画面はPayPay ID・外部生成の請求リンク・現金に対応し、銀行口座とアプリ内決済は扱わない。
+- 2026-07-24に支出メモ、カード上の対象者別支払い状態、金額／固定内訳の拡大、関係マップの自分中心デフォルト、相手への全額または支出イベントを選ぶ部分支払いを実装した。クラウド反映は本節下の統合チェックポイントで行う。
 - フェーズ9は精算ライフサイクル通知、未払いだけへの1日1回の催促、読み取り専用集計、5分・1回限りの外部アカウント紐付け、LINE HMAC／Discord Ed25519署名検証、リプレイ／レート制限、紐付け済み本人の支払い報告・受取確認まで実装・クラウド反映した。外部IDの平文や個人名をURLへ保存しない。
-- 最終ローカル自動検証はVitest 113件、Playwright 31件成功・狭幅専用2件skip、PGlite 11マイグレーション、Production buildが成功。Lighthouseの直近値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a621bfb498a064e045ec13a`。
+- 最終ローカル自動検証はVitest 115件、Playwright 34件成功・対象外2件skip、PGlite 12マイグレーション、Production buildが成功。LighthouseはDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a6258274660d6bdb9ec94b0`。
 - フェーズ8・9の統合チェックポイント`c02a743`までGitHub `main`へpush済み。GitHub Actions `Validate application` run `30001049555`でunit、build、Playwright、Lighthouse、artifact upload、backend validateが全成功した。
 - 実機接続を試みたが、この実行環境のADBブリッジは接続拒否（OS error 10061）、BrowserMCPは`Transport closed`のため、物理端末テストを完了扱いにはしていない。下記「フェーズ3実機依存確認」の手順で端末接続可能時に実施する。
 
@@ -24,6 +25,18 @@
 
 1. LINE Messaging APIとDiscord Applicationの本番資格情報をSupabase secretsへ登録し、実アカウントで署名付きWebhookをE2E確認する。
 2. 実スマートフォン、実通知先、Supabase WAF／Rate Limitingの運用受け入れを上記手順で実施する。
+
+## 2026-07-24 支出メモ・対象者別状態・イベント別支払い
+
+- `expenses.note`（500文字まで）、`settlement_items.payable_amount`、`settlement_items.payment_status`を追加する`20260724000100_expense_notes_and_partial_payments.sql`を実装した。
+- 相手ごとの相殺後純額はcharge明細へ比例配賦し、最大剰余法で1円単位の端数を決定する。明細合計は必ず親精算額と一致し、親状態は明細から`pending`（未報告あり）／`reported`（未報告なし・確認待ちあり）／`paid`（全件確認済み）へ集約する。
+- 支払い画面は支払先ごとに「相手への全額」と「イベントを選ぶ」を切り替えられる。選択モードでは未払いイベントを複数選択し、その合計だけを支払報告する。受取側は報告済み明細をまとめて確認する。従来の全額RPCとLINE／Discord BOTは互換トリガーで全明細へ反映する。
+- 支出カードは対象者ごとの精算状態と任意メモを表示する。金額と固定内訳を拡大し、320pxでは内訳を1列にする。精算関係マップは全視点で自分中心をデフォルトとし、「中立の精算は非表示」の文言を削除した。
+- ローカル検証はVitest 115件、Playwright 34件成功・対象外2件skip、PGlite 12マイグレーション、本番ビルド成功。320pxスクリーンショットで支出カード、メモ入力、関係マップ、イベント選択支払いを目視確認し、横はみ出しがないことを確認した。
+- `20260724000100`はリンク済みSupabaseへ単独の新規migrationとして適用済み。適用後にクラウドスキーマから`database.types.ts`を再生成し、Production buildが成功した。Docker catalog cache警告はローカルDocker未起動によるもので、リモート適用自体は成功している。
+- 実Postgres pgTAPは`SUPABASE_DB_PASSWORD`または直結用資格情報がこの端末に無く起動できなかった。PGliteでは12マイグレーションとメモ／配賦／部分報告／取消／確認を通過しているが、実Postgresテスト未実施の境界は残す。
+- NetlifyはProduction contextで1回だけビルド・デプロイし、Deploy `6a6258274660d6bdb9ec94b0`へ反映した。`https://polaris-warikan.netlify.app`を新規Chromiumの320px幅で直接操作し、HTTP成功、22px以上の支出金額、メモ欄、自分中心マップ、文言削除、同一相手の複数イベント選択、ページ横はみ出しなし、console／page error 0件を確認した。
+- GitHub `main`へ本変更セットを反映し、CI結果は`Validate application`の最新`main` runを正本として確認する。
 
 ## 2026-07-23 320px縦型UI・同名参加者対応
 
