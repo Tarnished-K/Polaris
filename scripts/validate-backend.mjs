@@ -15,7 +15,8 @@ try {
     create table auth.users(id uuid primary key);
     create function auth.uid() returns uuid language sql stable
       as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-    create function extensions.digest(bytea, text) returns bytea language sql immutable as $$ select $1 $$;
+    create function extensions.digest(bytea, text) returns bytea language sql immutable
+      as $$ select decode(md5(encode($1, 'hex')) || md5('warikan:' || encode($1, 'hex')), 'hex') $$;
     create function extensions.gen_random_bytes(integer) returns bytea language sql volatile
       as $$ select decode(string_agg(lpad(to_hex(floor(random() * 256)::integer), 2, '0'), ''), 'hex')
             from generate_series(1, $1) $$;
@@ -134,7 +135,7 @@ try {
 
   await database.query("select public.organizer_upsert_integration($1::uuid, 'discord', 'channel-123', 'Trip channel')", [eventId])
   await database.query('select public.finalize_event($1::uuid)', [eventId])
-  const settlementResult = await database.query('select id, amount, gross_amount, offset_amount, status::text from public.settlements where event_id = $1::uuid', [eventId])
+  const settlementResult = await database.query('select id, from_member_id, to_member_id, amount, gross_amount, offset_amount, status::text from public.settlements where event_id = $1::uuid', [eventId])
   assert.equal(settlementResult.rows.length, 1)
   assert.deepEqual(
     {
@@ -146,6 +147,8 @@ try {
     { amount: 4000, gross: 6000, offset: 2000, status: 'pending' },
   )
   const settlementId = settlementResult.rows[0].id
+  assert.equal(settlementResult.rows[0].from_member_id, proxy.id)
+  assert.equal(settlementResult.rows[0].to_member_id, payer.id)
   const finalizedJob = await database.query(
     "select notification_type, payload from public.notification_jobs where notification_type = 'settlement_finalized'",
   )
@@ -221,9 +224,99 @@ try {
     paypayRequestUrl: 'https://paypay.ne.jp/request/backend-smoke',
   }])
 
+  const linkCodeResult = await database.query(
+    "select public.create_member_link_code($1, $2, 'line') as result",
+    [shareToken, deviceToken],
+  )
+  const linkCode = linkCodeResult.rows[0].result.code
+  assert.match(linkCode, /^[0-9A-F]{8}$/)
+  const payerExternalHash = 'a'.repeat(64)
+  const proxyExternalHash = 'b'.repeat(64)
+  const consumedLink = await database.query(
+    "select public.consume_member_link_code($1, 'line', $2) as result",
+    [linkCode, payerExternalHash],
+  )
+  assert.equal(consumedLink.rows[0].result.linked, true)
+  const reusedLink = await database.query(
+    "select public.consume_member_link_code($1, 'line', $2) as result",
+    [linkCode, payerExternalHash],
+  )
+  assert.equal(reusedLink.rows[0].result.error, 'LINK_CODE_ALREADY_USED')
+  const externalLinks = await database.query(
+    'select public.get_external_account_links($1, $2) as result',
+    [shareToken, deviceToken],
+  )
+  assert.deepEqual(externalLinks.rows[0].result.map((link) => link.provider), ['line'])
+
+  await database.query(
+    `insert into public.member_external_accounts(member_id, provider, external_user_hash, verified_at)
+     values ($1::uuid, 'discord', $2, now())`,
+    [proxy.id, proxyExternalHash],
+  )
+  const linkedStatus = await database.query(
+    "select public.get_member_settlement_status_for_bot('discord', $1) as state",
+    [proxyExternalHash],
+  )
+  assert.equal(linkedStatus.rows[0].state.pendingCount, 1)
+  assert.equal(linkedStatus.rows[0].state.settlements[0].direction, 'outgoing')
+  await database.query(
+    "select public.report_settlement_for_external_account('discord', $1, $2::uuid)",
+    [proxyExternalHash, settlementId],
+  )
+  await database.query(
+    "select public.confirm_settlement_for_external_account('line', $1, $2::uuid)",
+    [payerExternalHash, settlementId],
+  )
+  await assert.rejects(
+    database.query(
+      "select public.report_settlement_for_external_account('line', $1, $2::uuid)",
+      [payerExternalHash, settlementId],
+    ),
+    /PENDING_SETTLEMENT_REQUIRED/,
+  )
+  const nowMs = Date.now()
+  const firstWebhook = await database.query(
+    "select public.claim_webhook_event('line', '01K123456789ABCDEFGHJKMNPQ', $1::bigint, $2, 300) as claimed",
+    [nowMs, 'c'.repeat(64)],
+  )
+  const replayedWebhook = await database.query(
+    "select public.claim_webhook_event('line', '01K123456789ABCDEFGHJKMNPQ', $1::bigint, $2, 300) as claimed",
+    [nowMs, 'c'.repeat(64)],
+  )
+  const expiredWebhook = await database.query(
+    "select public.claim_webhook_event('discord', '123456789012345678', $1::bigint, $2, 300) as claimed",
+    [nowMs - 301_000, 'd'.repeat(64)],
+  )
+  assert.equal(firstWebhook.rows[0].claimed, true)
+  assert.equal(replayedWebhook.rows[0].claimed, false)
+  assert.equal(expiredWebhook.rows[0].claimed, false)
+  const firstRate = await database.query(
+    "select public.consume_assistant_rate_limit('line', $1, 2, 300) as allowed",
+    [payerExternalHash],
+  )
+  const secondRate = await database.query(
+    "select public.consume_assistant_rate_limit('line', $1, 2, 300) as allowed",
+    [payerExternalHash],
+  )
+  const limitedRate = await database.query(
+    "select public.consume_assistant_rate_limit('line', $1, 2, 300) as allowed",
+    [payerExternalHash],
+  )
+  const providerSeparatedRate = await database.query(
+    "select public.consume_assistant_rate_limit('discord', $1, 2, 300) as allowed",
+    [payerExternalHash],
+  )
+  assert.equal(firstRate.rows[0].allowed, true)
+  assert.equal(secondRate.rows[0].allowed, true)
+  assert.equal(limitedRate.rows[0].allowed, false)
+  assert.equal(providerSeparatedRate.rows[0].allowed, true)
+  const unlinked = await database.query(
+    "select public.unlink_external_account($1, $2, 'line') as removed",
+    [shareToken, deviceToken],
+  )
+  assert.equal(unlinked.rows[0].removed, true)
+
   await database.query("select set_config('request.jwt.claim.sub', $1, false)", [organizerId])
-  await database.query('select public.report_settlement($1, null, $2::uuid)', [shareToken, settlementId])
-  await database.query('select public.confirm_settlement($1, null, $2::uuid)', [shareToken, settlementId])
   const completedBotStatus = await database.query(
     'select public.get_settlement_status_for_bot($1) as state',
     [shareToken],

@@ -134,4 +134,37 @@ describe('payment handoff backend', () => {
       }],
     ])
   })
+
+  it('issues, lists, and removes actor-scoped external account links', async () => {
+    const links = [{ provider: 'line', verifiedAt: '2026-07-23T00:00:00Z' }]
+    const code = { provider: 'discord', code: 'ABCD1234', expiresAt: '2026-07-23T00:05:00Z' }
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: links, error: null })
+      .mockResolvedValueOnce({ data: code, error: null })
+      .mockResolvedValueOnce({ data: true, error: null })
+    const backend = createWarikanBackend(
+      { url: 'https://example.supabase.co', publishableKey: 'test-key' },
+      { rpc } as unknown as SupabaseClient,
+    )
+
+    await expect(backend.getExternalAccountLinks('share-token', 'device-token')).resolves.toEqual(links)
+    await expect(backend.createExternalAccountLinkCode('share-token', 'device-token', 'discord')).resolves.toEqual(code)
+    await expect(backend.unlinkExternalAccount('share-token', 'device-token', 'line')).resolves.toBe(true)
+    expect(rpc.mock.calls).toEqual([
+      ['get_external_account_links', {
+        p_share_token: 'share-token',
+        p_device_token: 'device-token',
+      }],
+      ['create_member_link_code', {
+        p_share_token: 'share-token',
+        p_device_token: 'device-token',
+        p_provider: 'discord',
+      }],
+      ['unlink_external_account', {
+        p_share_token: 'share-token',
+        p_device_token: 'device-token',
+        p_provider: 'line',
+      }],
+    ])
+  })
 })

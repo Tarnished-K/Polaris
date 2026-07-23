@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      assistant_rate_limit_events: {
+        Row: {
+          external_user_hash: string
+          id: number
+          occurred_at: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+        }
+        Insert: {
+          external_user_hash: string
+          id?: never
+          occurred_at?: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+        }
+        Update: {
+          external_user_hash?: string
+          id?: never
+          occurred_at?: string
+          provider?: Database["public"]["Enums"]["integration_provider"]
+        }
+        Relationships: []
+      }
       activity_logs: {
         Row: {
           action: string
@@ -303,7 +324,7 @@ export type Database = {
         Row: {
           created_at: string
           display_name: string | null
-          external_user_id: string
+          external_user_hash: string
           id: string
           member_id: string
           provider: Database["public"]["Enums"]["integration_provider"]
@@ -312,7 +333,7 @@ export type Database = {
         Insert: {
           created_at?: string
           display_name?: string | null
-          external_user_id: string
+          external_user_hash: string
           id?: string
           member_id: string
           provider: Database["public"]["Enums"]["integration_provider"]
@@ -321,7 +342,7 @@ export type Database = {
         Update: {
           created_at?: string
           display_name?: string | null
-          external_user_id?: string
+          external_user_hash?: string
           id?: string
           member_id?: string
           provider?: Database["public"]["Enums"]["integration_provider"]
@@ -330,6 +351,60 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "member_external_accounts_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_link_codes: {
+        Row: {
+          attempts: number
+          code_hash: string
+          consumed_at: string | null
+          created_at: string
+          event_id: string
+          expires_at: string
+          id: string
+          max_attempts: number
+          member_id: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+        }
+        Insert: {
+          attempts?: number
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string
+          event_id: string
+          expires_at: string
+          id?: string
+          max_attempts?: number
+          member_id: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+        }
+        Update: {
+          attempts?: number
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string
+          event_id?: string
+          expires_at?: string
+          id?: string
+          max_attempts?: number
+          member_id?: string
+          provider?: Database["public"]["Enums"]["integration_provider"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_link_codes_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_link_codes_member_id_fkey"
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
@@ -596,6 +671,33 @@ export type Database = {
           },
         ]
       }
+      webhook_receipts: {
+        Row: {
+          event_timestamp: string
+          external_event_id: string
+          id: number
+          payload_hash: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+          received_at: string
+        }
+        Insert: {
+          event_timestamp: string
+          external_event_id: string
+          id?: never
+          payload_hash: string
+          provider: Database["public"]["Enums"]["integration_provider"]
+          received_at?: string
+        }
+        Update: {
+          event_timestamp?: string
+          external_event_id?: string
+          id?: never
+          payload_hash?: string
+          provider?: Database["public"]["Enums"]["integration_provider"]
+          received_at?: string
+        }
+        Relationships: []
+      }
       settlements: {
         Row: {
           amount: number
@@ -742,6 +844,53 @@ export type Database = {
         }
         Returns: undefined
       }
+      create_member_link_code: {
+        Args: {
+          p_device_token: string
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+          p_share_token: string
+        }
+        Returns: Json
+      }
+      claim_webhook_event: {
+        Args: {
+          p_external_event_id: string
+          p_max_age_seconds?: number
+          p_payload_hash: string
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+          p_timestamp_ms: number
+        }
+        Returns: boolean
+      }
+      consume_member_link_code: {
+        Args: {
+          p_code: string
+          p_external_user_hash: string
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+        }
+        Returns: Json
+      }
+      consume_assistant_rate_limit: {
+        Args: {
+          p_external_user_hash: string
+          p_limit?: number
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+          p_window_seconds?: number
+        }
+        Returns: boolean
+      }
+      confirm_settlement_for_external_account: {
+        Args: {
+          p_external_user_hash: string
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+          p_settlement_id: string
+        }
+        Returns: undefined
+      }
+      get_external_account_links: {
+        Args: { p_device_token: string; p_share_token: string }
+        Returns: Json
+      }
       get_event_state:
         | { Args: { p_share_token: string }; Returns: Json }
         | {
@@ -754,6 +903,13 @@ export type Database = {
       }
       get_settlement_status_for_bot: {
         Args: { p_share_token: string }
+        Returns: Json
+      }
+      get_member_settlement_status_for_bot: {
+        Args: {
+          p_external_user_hash: string
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+        }
         Returns: Json
       }
       join_event: {
@@ -834,6 +990,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      report_settlement_for_external_account: {
+        Args: {
+          p_external_user_hash: string
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+          p_settlement_id: string
+        }
+        Returns: undefined
+      }
       revert_settlement: {
         Args: {
           p_device_token: string
@@ -863,6 +1027,14 @@ export type Database = {
           p_share_token: string
         }
         Returns: undefined
+      }
+      unlink_external_account: {
+        Args: {
+          p_device_token: string
+          p_provider: Database["public"]["Enums"]["integration_provider"]
+          p_share_token: string
+        }
+        Returns: boolean
       }
       unfinalize_event: {
         Args: { p_event_id: string; p_force?: boolean }

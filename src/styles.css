@@ -5070,6 +5070,58 @@ p {
   box-shadow: var(--shadow-sm);
 }
 
+.external-account-card {
+  align-items: start;
+}
+
+.external-account-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.external-account-provider {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.external-account-provider__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.external-link-code {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--warm-canvas);
+}
+
+.external-link-code span,
+.external-account-note {
+  color: var(--subtle);
+  font-size: 0.82rem;
+}
+
+.external-link-code strong {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 1.05rem;
+  letter-spacing: 0.05em;
+}
+
+.external-account-grid > .form-error,
+.external-account-grid > .form-success,
+.external-account-note {
+  margin: 0;
+}
+
 .payment-profile-card__form {
   display: grid;
   gap: 14px;

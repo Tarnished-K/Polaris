@@ -9,8 +9,8 @@
 - バックログ6.1（関係マップ）、6.2（債務マトリクス）、6.3（予約語バリデーション）は実装済み。
 - 通知は暗号化されたDiscord／LINE登録UI、outbox、dispatcherまで本番反映済み。実WebhookとLINE channel access tokenを使う外部配送だけ未確認。
 - フェーズ8「支払い・受け取りアクションハブ」はローカル実装と自動検証まで完了した。支払い画面はPayPay ID・外部生成の請求リンク・現金に対応し、銀行口座とアプリ内決済は扱わない。
-- フェーズ9前半は精算ライフサイクル通知、未払いだけへの1日1回の催促、service role限定の集計状況RPC、内部secretで保護した読み取り専用`event-assistant`、安全なdeep linkまで実装した。後半は参加者とのワンタイム紐付け後だけ本人の支払い操作を許可する。
-- 最終ローカル自動検証はVitest 89件、Playwright 20件、PGlite 9マイグレーション、Production buildが成功。Lighthouseの直近本番値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a61c1aa254402e0ea1eea83`。フェーズ8・9前半はデプロイ回数削減のため未反映。
+- フェーズ9は精算ライフサイクル通知、未払いだけへの1日1回の催促、読み取り専用集計、5分・1回限りの外部アカウント紐付け、LINE HMAC／Discord Ed25519署名検証、リプレイ／レート制限、紐付け済み本人の支払い報告・受取確認までコード実装した。外部IDの平文や個人名をURLへ保存しない。
+- 最終ローカル自動検証はVitest 111件、Playwright 20件、PGlite 10マイグレーション、Production buildが成功。Lighthouseの直近本番値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a61c1aa254402e0ea1eea83`。フェーズ8・9はデプロイ回数削減のため統合反映待ち。
 - 実装一式は`main`の`b37fc64`、手動CI起動対応は`6ae1d84`としてGitHubへpush済み。GitHub Actions `Validate application` run `29988948909`でunit、build、Playwright、Lighthouse、artifact upload、backend validateが全成功した。
 - 実機接続を試みたが、この実行環境のADBブリッジは接続拒否（OS error 10061）、BrowserMCPは`Transport closed`のため、物理端末テストを完了扱いにはしていない。下記「フェーズ3実機依存確認」の手順で端末接続可能時に実施する。
 
@@ -23,10 +23,10 @@
 
 ### 次のコード作業
 
-1. 短時間・1回限りのコードによる`member_external_accounts`紐付け、解除、失効、再発行を実装する。コードはハッシュだけを保存する。
-2. LINE／Discord署名検証、timestamp＋nonceのリプレイ防止、受付応答とoutbox分離を実装する。
-3. BOTからの状態変更は紐付け済み本人だけに限定し、既存精算RPCと同等のactor認可を通す。幹事権限はチャットへ暗黙に継承しない。
-4. フェーズ8・9をまとめてクラウドDBへ反映し、追加済みpgTAP、Edge Function契約テスト、実資格情報不要の認可テストを通してから、Netlifyを1回だけ更新する。
+1. フェーズ8・9の3マイグレーションをクラウドDBへ1回で反映し、全6 pgTAPファイル・111 assertionsを実Postgresで実行する。
+2. `EXTERNAL_ACCOUNT_HMAC_KEY`と`ASSISTANT_INTERNAL_KEY`を生成してSupabase Function secretへ設定する。LINE／Discordの実資格情報は下記運用受け入れで設定し、リポジトリや`VITE_*`へ入れない。
+3. `event-assistant`、`line-assistant-webhook`、`discord-assistant-webhook`をまとめてデプロイし、未署名401、内部secretなし401、無効入力400、既存dispatcher非回帰を確認する。
+4. クラウドDB／Edge Functionの自動検証後にGitHubへpushし、Netlifyを1回だけ更新してProduction build、Mobile／Desktop、console errorを確認する。
 
 ## 2026-07-23 フェーズ1 Google認証の完了
 

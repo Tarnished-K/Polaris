@@ -12,7 +12,7 @@
 - 「未解決の設計判断」セクションに列挙した項目は、着手前に必ず決定してからコードを書くこと。決定した内容は本書または`HANDOFF.md`に追記すること。
 - 末尾の「バックログ」は着手承認待ちの機能。フェーズ番号がついていないものはユーザーの明示的な指示があるまで着手しないこと。
 
-**2026-07-23総括**: コードで完結するフェーズ0〜8とバックログ6.1〜6.3は実装済み。独立した「支払い・受け取り」導線をフェーズ8として実装し、LINE／Discordを通知からイベントアシスタントへ拡張するフェーズ9は通知ライフサイクル、未払い催促、安全な読み取り専用状況照会まで完了した。従来の外部環境依存残件（実機PWA・オフライン復帰、実Sentryイベント、実Discord／LINE配送、Supabase WAF／Rate Limiting）は`HANDOFF.md`で別管理し、推測で完了扱いにしない。
+**2026-07-23総括**: コードで完結するフェーズ0〜9とバックログ6.1〜6.3は実装済み。独立した「支払い・受け取り」導線をフェーズ8、LINE／Discordイベントアシスタントをフェーズ9として実装した。フェーズ8・9のクラウドDB／Edge Function／Netlify反映はデプロイ回数を抑えるため1回の統合チェックポイントにまとめる。従来の外部環境依存残件（実機PWA・オフライン復帰、実Sentryイベント、実Discord／LINE配送、Supabase WAF／Rate Limiting）は`HANDOFF.md`で別管理し、推測で完了扱いにしない。
 
 ---
 
@@ -485,13 +485,17 @@ Postgresマイグレーション4本が実装済み。
 - LINE／Discordの片方が未設定でも、Webアプリともう一方の通知配送が影響を受けない。
 - 実資格情報がない検証環境ではアダプター契約・署名・認可・outboxまでを自動検証し、実配送は`HANDOFF.md`の運用受け入れに残す。
 
-**実装状況 (2026-07-23、前半完了)**:
+**実装状況 (2026-07-23、コード完了)**:
 
 - 精算確定、支払い報告、受取確認、全員完了をDB状態遷移から既存`notification_jobs`へ自動登録するライフサイクル通知を追加した。登録済みのactiveなDiscord／LINE通知先ごとにジョブを生成し、支払い画面deep linkを添える。
 - 幹事の支払い画面へ「未払いの人だけに催促」を追加した。サーバーが`pending`だけを選び、同じ精算・通知先への催促は日本時間の暦日ごとに1回までdedupeする。`reported`／`paid`は対象外。
 - service role限定`get_settlement_status_for_bot`は、完了／報告済み／未払い件数、未完了残額、全員完了だけを返し、氏名・受取方法・device tokenを返さない。`event-assistant` Edge Functionは内部secretで保護した読み取り専用`status`契約だけを実装した。
-- `payment`／`settlement` deep linkを共通ビルダーへ整理し、共有URLから目的画面へ復帰できる。LINE／Discord署名Webhookと外部アカウント紐付け後の状態変更は後半で実装する。
-- Vitest 89件、PGlite 9マイグレーションと通知フロー、Production build、Playwright Desktop／Mobile 20件、`git diff --check`が成功した。新規pgTAP 18 assertionsは追加済みで、フェーズ8・9後半をまとめてクラウドDBへ反映後に実Postgresで実行する。
+- `payment`／`settlement` deep linkを共通ビルダーへ整理し、共有URLから目的画面へ復帰できる。URLには個人名、device token、claim token、外部アカウントIDを含めない。
+- 支払い画面からLINE／Discord別に5分・1回限りの8桁コードを発行し、コード自体はSHA-256、外部ユーザーIDはEdge Function secretによるprovider別HMACだけを保存する。連携の再発行、使用済み／期限切れ拒否、別参加者への重複連携拒否、本人による解除を実装した。
+- LINE Webhookは公式仕様どおり生bodyのHMAC-SHA256、安定した`webhookEventId`、元timestampを検証する。Discord Interactionは公式仕様どおりEd25519で`X-Signature-Timestamp + raw body`を検証し、5分を超えるtimestampを拒否、PINGへPONG、応答をephemeralにする。
+- LINE／Discord共通でprovider event IDのリプレイ防止と、HMAC化した外部アカウント単位の5分10回制限を追加した。紐付け後の状況照会、支払い報告、受取確認はservice role限定RPCから本人の支払者／受取者関係を再検証し、幹事権限を継承しない。
+- 個人名をdeep linkやクエリへ含める案は採用せず、share tokenとopaqueなsettlement UUIDだけを使用する。
+- Vitest 111件、PGlite 10マイグレーションと連携／通知／リプレイ／認可フロー、Production build、Playwright Desktop／Mobile 20件、`git diff --check`が成功した。pgTAPは全6ファイル・111 assertionsへ拡張済みで、フェーズ8・9をまとめてクラウドDBへ反映後に実Postgresで実行する。
 
 ---
 

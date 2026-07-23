@@ -13,6 +13,8 @@ import type {
   PaymentState,
   WarikanBackend,
   UnfinalizeEventResult,
+  ExternalAccountLink,
+  ExternalAccountLinkCode,
 } from './types'
 import type { SettlementStatus } from '../domain/types'
 import type { EventDraft } from '../domain/types'
@@ -277,6 +279,41 @@ export function createWarikanBackend(config: SupabaseConfig, client?: WarikanSup
         }),
       )
       requireSuccess(error)
+    },
+
+    async getExternalAccountLinks(shareToken, deviceToken) {
+      const { data, error } = await supabase.rpc(
+        'get_external_account_links',
+        allowSqlNull<'get_external_account_links', 'p_device_token'>({
+          p_share_token: shareToken,
+          p_device_token: deviceToken ?? null,
+        }),
+      )
+      return requireData(data as ExternalAccountLink[] | null, error)
+    },
+
+    async createExternalAccountLinkCode(shareToken, deviceToken, provider) {
+      const { data, error } = await supabase.rpc(
+        'create_member_link_code',
+        allowSqlNull<'create_member_link_code', 'p_device_token'>({
+          p_share_token: shareToken,
+          p_device_token: deviceToken ?? null,
+          p_provider: provider,
+        }),
+      )
+      return requireData(data as ExternalAccountLinkCode | null, error)
+    },
+
+    async unlinkExternalAccount(shareToken, deviceToken, provider) {
+      const { data, error } = await supabase.rpc(
+        'unlink_external_account',
+        allowSqlNull<'unlink_external_account', 'p_device_token'>({
+          p_share_token: shareToken,
+          p_device_token: deviceToken ?? null,
+          p_provider: provider,
+        }),
+      )
+      return requireData(data as boolean | null, error)
     },
 
     async addExpense(input: AddExpenseInput) {

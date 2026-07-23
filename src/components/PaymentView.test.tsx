@@ -44,6 +44,10 @@ const callbacks = {
   onConfirmSettlement: vi.fn(),
   onRevertSettlement: vi.fn(),
   onScheduleReminders: vi.fn().mockResolvedValue(1),
+  externalAccountLinks: [],
+  externalAccountLinkingAvailable: true,
+  onCreateExternalAccountLinkCode: vi.fn(),
+  onUnlinkExternalAccount: vi.fn(),
 }
 
 describe('PaymentView', () => {
@@ -67,6 +71,8 @@ describe('PaymentView', () => {
     )
 
     expect(markup).toContain('支払い・受け取り')
+    expect(markup).toContain('LINE／Discord連携')
+    expect(markup).toContain('連携コードを発行')
     expect(markup).toContain('幹事へ支払う')
     expect(markup).toContain('organizer_1')
     expect(markup).toContain('PayPay請求リンクを開く')
@@ -78,6 +84,7 @@ describe('PaymentView', () => {
     const markup = renderToStaticMarkup(
       <PaymentView
         {...callbacks}
+        externalAccountLinks={[{ provider: 'line', verifiedAt: '2026-07-23T00:00:00Z' }]}
         event={event}
         members={members}
         currentMemberId="organizer"
@@ -94,6 +101,8 @@ describe('PaymentView', () => {
     expect(markup).toContain('この相手用のPayPay請求リンク')
     expect(markup).toContain('全員の支払い進捗')
     expect(markup).toContain('未払い1件を催促')
+    expect(markup).toContain('連携済み')
+    expect(markup).toContain('連携を解除')
     expect(markup).toContain('Organizer')
   })
 })

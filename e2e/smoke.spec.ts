@@ -38,6 +38,9 @@ test('saves a local payment profile without collecting bank details', async ({ p
   await page.getByRole('button', { name: '受取方法を保存' }).click()
   await expect(page.getByText('受取方法を保存しました。')).toBeVisible()
   await expect(page.getByText('銀行口座やカード情報は入力しないでください。')).toBeVisible()
+  await expect(page.getByRole('button', { name: '連携コードを発行' })).toHaveCount(2)
+  await expect(page.getByRole('button', { name: '連携コードを発行' }).first()).toBeDisabled()
+  await expect(page.getByText('BOT連携はクラウドの共有イベントで利用できます。')).toBeVisible()
 })
 
 test('shows organizer reminders only after settlement finalization', async ({ page }) => {

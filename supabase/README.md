@@ -89,3 +89,18 @@ https://polaris-warikan.netlify.app/e/{shareToken}?view=settlement&settlement={s
 ```
 
 `event-assistant`の前半実装は、内部adapterから`x-assistant-key`で呼ぶ読み取り専用`status`契約だけを公開する。`ASSISTANT_INTERNAL_KEY`はSupabase Function secretに置き、クライアントへ渡さない。LINE／Discordから直接受ける署名検証済みWebhookと、外部アカウント紐付け後の状態変更は後半実装で追加する。
+
+外部アカウント連携は支払い画面で発行する8桁コードを5分・1回限りで使用する。DBにはコードのSHA-256と、Edge Functionで生成したprovider別HMACだけを保存し、LINE／DiscordユーザーIDの平文は保存しない。Webhookはprovider event IDで重複排除し、外部アカウントごとに5分10回へ制限する。
+
+必要なSupabase Function secrets:
+
+```text
+EXTERNAL_ACCOUNT_HMAC_KEY=十分に長いランダム値
+ASSISTANT_INTERNAL_KEY=十分に長い別のランダム値
+LINE_CHANNEL_SECRET=LINE Developersで発行されたChannel secret
+LINE_CHANNEL_ACCESS_TOKEN=LINE Developersで発行されたChannel access token
+DISCORD_APPLICATION_PUBLIC_KEY=Discord Applicationの公開鍵（hex）
+INTEGRATION_ENCRYPTION_KEY=既存Discord Webhook暗号化鍵
+```
+
+`EXTERNAL_ACCOUNT_HMAC_KEY`と`ASSISTANT_INTERNAL_KEY`を共用しない。いずれも`VITE_*`、`.env.production`、Git、通知payload、activity logへ入れない。

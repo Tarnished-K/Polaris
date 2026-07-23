@@ -27,7 +27,14 @@ import {
   saveEventMember,
 } from './backend/sharedEventSession'
 import { useSupabaseAuth } from './backend/useSupabaseAuth'
-import type { AddExpenseInput, EventState, PaymentState, UnfinalizeEventResult } from './backend/types'
+import type {
+  AddExpenseInput,
+  EventState,
+  ExternalAccountLink,
+  IntegrationProvider,
+  PaymentState,
+  UnfinalizeEventResult,
+} from './backend/types'
 import type { EventDraft, PaymentProfile } from './domain/types'
 
 const EMPTY_PAYMENT_STATE: PaymentState = {
@@ -54,6 +61,7 @@ export function App() {
   const [paymentState, setPaymentState] = useState<PaymentState>(EMPTY_PAYMENT_STATE)
   const [paymentStateLoading, setPaymentStateLoading] = useState(false)
   const [paymentStateError, setPaymentStateError] = useState('')
+  const [externalAccountLinks, setExternalAccountLinks] = useState<ExternalAccountLink[]>([])
   const loadedAttempt = useRef<number | null>(null)
   const flushingPending = useRef(false)
   const auth = useSupabaseAuth()
@@ -236,6 +244,7 @@ export function App() {
       }))
       setPaymentStateLoading(false)
       setPaymentStateError('')
+      setExternalAccountLinks([])
       return
     }
 
@@ -244,9 +253,15 @@ export function App() {
       : getOrCreateEventSession(window.localStorage, event.shareToken).deviceToken
     setPaymentStateLoading(true)
     setPaymentStateError('')
-    void backend.getPaymentState(event.shareToken, deviceToken)
-      .then((state) => {
-        if (!disposed) setPaymentState(state)
+    void Promise.all([
+      backend.getPaymentState(event.shareToken, deviceToken),
+      backend.getExternalAccountLinks(event.shareToken, deviceToken),
+    ])
+      .then(([state, links]) => {
+        if (!disposed) {
+          setPaymentState(state)
+          setExternalAccountLinks(links)
+        }
       })
       .catch((cause) => {
         if (!disposed) setPaymentStateError(cause instanceof Error ? cause.message : '受取方法を読み込めませんでした。')
@@ -389,6 +404,24 @@ export function App() {
   const scheduleSettlementReminders = async () => {
     if (!cloudEvent || !backend || !event) return 0
     return backend.scheduleSettlementReminders(event.id)
+  }
+
+  const createExternalAccountLinkCode = async (provider: IntegrationProvider) => {
+    if (!cloudEvent || !backend || !event) throw new Error('共有イベントで利用できます。')
+    const deviceToken = organizer
+      ? undefined
+      : getOrCreateEventSession(window.localStorage, event.shareToken).deviceToken
+    return backend.createExternalAccountLinkCode(event.shareToken, deviceToken, provider)
+  }
+
+  const unlinkExternalAccount = async (provider: IntegrationProvider) => {
+    if (!cloudEvent || !backend || !event) return false
+    const deviceToken = organizer
+      ? undefined
+      : getOrCreateEventSession(window.localStorage, event.shareToken).deviceToken
+    const removed = await backend.unlinkExternalAccount(event.shareToken, deviceToken, provider)
+    if (removed) setExternalAccountLinks((current) => current.filter((link) => link.provider !== provider))
+    return removed
   }
   const savePaymentProfile = async (profile: Omit<PaymentProfile, 'memberId'>) => {
     if (!currentMemberId) throw new Error('参加者を確認できません。')
@@ -631,6 +664,10 @@ export function App() {
           onConfirmSettlement={confirmSettlement}
           onRevertSettlement={revertSettlement}
           onScheduleReminders={scheduleSettlementReminders}
+          externalAccountLinks={externalAccountLinks}
+          externalAccountLinkingAvailable={cloudEvent && Boolean(backend)}
+          onCreateExternalAccountLinkCode={createExternalAccountLinkCode}
+          onUnlinkExternalAccount={unlinkExternalAccount}
         /></Suspense>
         {perspectiveSwitcher}
       </>

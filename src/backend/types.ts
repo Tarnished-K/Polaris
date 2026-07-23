@@ -67,6 +67,17 @@ export interface PaymentState {
 
 export type IntegrationProvider = 'discord' | 'line'
 
+export interface ExternalAccountLink {
+  provider: IntegrationProvider
+  verifiedAt: string
+}
+
+export interface ExternalAccountLinkCode {
+  provider: IntegrationProvider
+  code: string
+  expiresAt: string
+}
+
 export interface NotificationIntegration {
   id: string
   provider: IntegrationProvider
@@ -100,6 +111,17 @@ export interface WarikanBackend {
     settlementId: string,
     paypayRequestUrl?: string,
   ): Promise<void>
+  getExternalAccountLinks(shareToken: string, deviceToken?: string): Promise<ExternalAccountLink[]>
+  createExternalAccountLinkCode(
+    shareToken: string,
+    deviceToken: string | undefined,
+    provider: IntegrationProvider,
+  ): Promise<ExternalAccountLinkCode>
+  unlinkExternalAccount(
+    shareToken: string,
+    deviceToken: string | undefined,
+    provider: IntegrationProvider,
+  ): Promise<boolean>
   addExpense(input: AddExpenseInput): Promise<AddExpenseResult>
   updateExpense(input: ExpenseMutationInput): Promise<AddExpenseResult>
   saveOwnFixedAmount(shareToken: string, deviceToken: string, expenseId: string, fixedAmount?: number): Promise<void>

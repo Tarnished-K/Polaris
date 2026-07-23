@@ -7,7 +7,12 @@ import type {
   SettlementPaymentLink,
   WarikanEvent,
 } from '../domain/types'
-import type { PaymentState } from '../backend/types'
+import type {
+  ExternalAccountLink,
+  ExternalAccountLinkCode,
+  IntegrationProvider,
+  PaymentState,
+} from '../backend/types'
 import { validatePayPayId, validatePayPayRequestUrl } from '../lib/validation'
 import { EventHeader } from './EventHeader'
 import { formatYen, memberDisplayName, SETTLEMENT_STATUS_META } from './ui'
@@ -31,6 +36,117 @@ interface PaymentViewProps {
   onConfirmSettlement: (settlementId: string) => void | Promise<void>
   onRevertSettlement: (settlementId: string) => void | Promise<void>
   onScheduleReminders: () => number | Promise<number>
+  externalAccountLinks: ExternalAccountLink[]
+  externalAccountLinkingAvailable: boolean
+  onCreateExternalAccountLinkCode: (provider: IntegrationProvider) => ExternalAccountLinkCode | Promise<ExternalAccountLinkCode>
+  onUnlinkExternalAccount: (provider: IntegrationProvider) => boolean | Promise<boolean>
+}
+
+const EXTERNAL_PROVIDER_META: Record<IntegrationProvider, { label: string; command: string }> = {
+  line: { label: 'LINE', command: '連携' },
+  discord: { label: 'Discord', command: '/link code:' },
+}
+
+function ExternalAccountLinking({
+  links,
+  available,
+  onCreateCode,
+  onUnlink,
+}: {
+  links: ExternalAccountLink[]
+  available: boolean
+  onCreateCode: PaymentViewProps['onCreateExternalAccountLinkCode']
+  onUnlink: PaymentViewProps['onUnlinkExternalAccount']
+}) {
+  const [codes, setCodes] = useState<Partial<Record<IntegrationProvider, ExternalAccountLinkCode>>>({})
+  const [busy, setBusy] = useState<IntegrationProvider | null>(null)
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+
+  const createCode = async (provider: IntegrationProvider) => {
+    setBusy(provider)
+    setMessage('')
+    setError('')
+    try {
+      const code = await onCreateCode(provider)
+      setCodes((current) => ({ ...current, [provider]: code }))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '連携コードを発行できませんでした。')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const unlink = async (provider: IntegrationProvider) => {
+    setBusy(provider)
+    setMessage('')
+    setError('')
+    try {
+      await onUnlink(provider)
+      setCodes((current) => ({ ...current, [provider]: undefined }))
+      setMessage(`${EXTERNAL_PROVIDER_META[provider].label}との連携を解除しました。`)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '連携を解除できませんでした。')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <section className="payment-profile-card external-account-card" aria-labelledby="external-account-heading">
+      <div>
+        <p className="eyebrow">BOTから確認・報告</p>
+        <h2 id="external-account-heading">LINE／Discord連携</h2>
+        <p>5分間・1回限りのコードで、この参加者と外部アカウントを紐付けます。コード自体や外部ユーザーIDの平文は保存しません。</p>
+      </div>
+      <div className="external-account-grid">
+        {(['line', 'discord'] as const).map((provider) => {
+          const meta = EXTERNAL_PROVIDER_META[provider]
+          const connected = links.some((link) => link.provider === provider)
+          const code = codes[provider]
+          return (
+            <article key={provider} className="external-account-provider">
+              <div className="external-account-provider__heading">
+                <strong>{meta.label}</strong>
+                <span className={`status-pill ${connected ? 'status-pill--success' : 'status-pill--muted'}`}>
+                  {connected ? '連携済み' : '未連携'}
+                </span>
+              </div>
+              {connected ? (
+                <button type="button" className="text-button text-button--danger" disabled={busy === provider} onClick={() => void unlink(provider)}>
+                  {busy === provider ? '解除中…' : '連携を解除'}
+                </button>
+              ) : (
+                <>
+                  <button type="button" className="button button--secondary" disabled={!available || busy === provider} onClick={() => void createCode(provider)}>
+                    {busy === provider ? '発行中…' : '連携コードを発行'}
+                  </button>
+                  {code && (
+                    <div className="external-link-code" role="status">
+                      <span>5分以内に{meta.label}で入力</span>
+                      <strong>{meta.command} {code.code}</strong>
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => {
+                          if (typeof navigator !== 'undefined') void navigator.clipboard?.writeText(code.code)
+                        }}
+                      >
+                        コードをコピー
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </article>
+          )
+        })}
+        {!available && <p className="external-account-note">BOT連携はクラウドの共有イベントで利用できます。</p>}
+        {message && <p className="form-success" role="status">{message}</p>}
+        {error && <p className="form-error" role="alert">{error}</p>}
+      </div>
+    </section>
+  )
 }
 
 function PaymentProfileEditor({
@@ -326,6 +442,10 @@ export function PaymentView({
   onConfirmSettlement,
   onRevertSettlement,
   onScheduleReminders,
+  externalAccountLinks,
+  externalAccountLinkingAvailable,
+  onCreateExternalAccountLinkCode,
+  onUnlinkExternalAccount,
 }: PaymentViewProps) {
   const [reminderBusy, setReminderBusy] = useState(false)
   const [reminderMessage, setReminderMessage] = useState('')
@@ -412,6 +532,13 @@ export function PaymentView({
           profile={profileMap.get(currentMemberId ?? '')}
           disabled={loading || !currentMemberId}
           onSave={onSaveProfile}
+        />
+
+        <ExternalAccountLinking
+          links={externalAccountLinks}
+          available={externalAccountLinkingAvailable}
+          onCreateCode={onCreateExternalAccountLinkCode}
+          onUnlink={onUnlinkExternalAccount}
         />
 
         {event.status !== 'finalized' ? (
