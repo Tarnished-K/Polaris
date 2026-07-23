@@ -19,7 +19,7 @@
 1. 異なる物理端末で共有URLを開き、PWAホーム画面追加と、オフライン支出→オンライン復帰→別端末Realtime反映を確認する。
 2. SentryプロジェクトのDSNをNetlify環境変数`VITE_SENTRY_DSN`へ設定して再ビルドし、参加者名・共有tokenがマスクされた実イベントの到達を確認する。DSNを`.env.production`やリポジトリへ保存しない。
 3. DiscordテストWebhookを設定画面から登録し、LINEはSupabase Function secret`LINE_CHANNEL_ACCESS_TOKEN`と送信先IDを設定して、dispatcherの実配送・delivery記録を確認する。
-4. Supabase側で利用可能なWAF／Rate Limitingを確認し、本番ポリシーを適用する。Postgres RPC内に送信元IPを推測する制限は追加しない。
+4. DB直結元を固定IPへ集約できる運用になった時点で、Supabase Network Restrictionsを`0.0.0.0/0`／`::/0`から必要なCIDRだけへ狭める。HTTPS APIにはこの制限が適用されないため、BOT受信は現在の署名・リプレイ防止・外部ID単位レート制限を維持する。
 
 ### 外部環境依存の残件
 
@@ -34,6 +34,8 @@
 - `event-assistant`、`line-assistant-webhook`、`discord-assistant-webhook`を本番へデプロイし、3関数ともACTIVE、`verify_jwt=false`を確認した。内部鍵なし401、正しい内部鍵＋未知イベント404、LINE／Discordの未署名リクエスト401を本番URLで確認した。
 - 統合後にVitest 111件、PGlite 10マイグレーション、Playwright Desktop／Mobile 20件、Production build、Lighthouse Desktop 1.00／Mobile 0.97、`git diff --check`が成功した。
 - Netlify Deploy `6a61f34636b0e4e5c55a8360`へ本番反映した。`https://polaris-warikan.netlify.app`はHTTP 200、新しいmain assetと設定chunkが配信され、Google OAuthが`accounts.google.com`へ遷移し、390pxの支払い画面に横あふれとconsole／page errorがないことを確認した。通知設定はクラウドイベントの認証済み幹事だけに表示されるため、権限を迂回せず本番設定chunkの秘密再表示禁止文言まで確認した。
+- Supabase Management APIでプロジェクトが`ACTIVE_HEALTHY`、Authの各組み込みrate limitが有効、DB Network RestrictionsがIPv4 `0.0.0.0/0`／IPv6 `::/0`で適用中と確認した。Network RestrictionsはPostgres／poolerだけを対象にし、PostgREST・Auth・Storage・Edge Function等のHTTPS APIには適用されない。現在は固定の管理元IPがないため、CLI、マイグレーション、実Postgres検証を遮断するCIDR変更は行っていない。
+- Edge Functionの受信保護はプラットフォーム任せにせず、LINE HMAC／Discord Ed25519、5分timestamp、provider event IDリプレイ防止、HMAC化した外部アカウント単位10回/5分を実装済み。汎用的な追加制限が必要になった場合はEdge Function内の共有ストア方式を検討し、Postgres RPC内で送信元IPを推測しない。
 
 ## 2026-07-23 フェーズ1 Google認証の完了
 
