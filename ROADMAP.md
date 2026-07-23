@@ -12,6 +12,8 @@
 - 「未解決の設計判断」セクションに列挙した項目は、着手前に必ず決定してからコードを書くこと。決定した内容は本書または`HANDOFF.md`に追記すること。
 - 末尾の「バックログ」は着手承認待ちの機能。フェーズ番号がついていないものはユーザーの明示的な指示があるまで着手しないこと。
 
+**2026-07-23総括**: コードで完結するフェーズ0〜7とバックログ6.1〜6.3は実装済み。未達の受け入れ条件は、異なる物理端末でのPWAホーム画面追加・オフライン復帰、実Sentryイベント、実Discord／LINE配送、Supabase WAF／Rate Limiting設定に限られる。これらはコード未実装ではなく、実端末・外部資格情報・ダッシュボード設定が必要な運用受け入れとして`HANDOFF.md`に残す。実行環境ではADBがOS error 10061、BrowserMCPが`Transport closed`で接続できなかったため、推測で完了扱いにしない。
+
 ---
 
 ## 1. プロダクト概要と恒久的な制約
@@ -167,11 +169,10 @@ Postgresマイグレーション4本が実装済み。
 
 ### 2.6 フロントエンド⇔バックエンド接続状況
 
-- `src/backend/supabase.ts`の`createWarikanBackend(config)`は、上記RPCのうち14個(`createEvent`, `getEventState`, `joinEvent`, `claimMember`, `addExpense`, `updateExpense`, `saveOwnFixedAmount`, `finalizeExpense`, `deleteExpense`, `finalizeEvent`, `unfinalizeEvent`, `reportSettlement`, `confirmSettlement`, `revertSettlement`)をラップしたクライアントメソッドを既に持っている。
-- しかし`src/App.tsx`から実際に呼ばれているのは**`backend.createEvent()`のみ**。それ以外の13メソッドはコード上に存在するがどこからも呼ばれていない。
-- 認証: `src/backend/useSupabaseAuth.ts`がGoogle OAuth開始・セッション復元・ログアウトを実装済み。2026-07-23に共有URLのpathname/queryをOAuth後も保持するよう修正し、Supabase AuthのSite URLとローカルRedirect URLも設定済み。ただし**Supabaseダッシュボード側でGoogleプロバイダーがまだDisabled**であり、Google Cloud側のOAuth Web Client(Client ID / Secret)も未作成のため、実際のGoogleログインはまだ成功しない。
-- 共有URL: `createEvent`成功時に`window.history.replaceState(null, '', `/e/${remote.event.shareToken}`)`でURLの見た目だけを書き換えている。**しかし、ページの初回マウント時にこのURLパスを解析して`get_event_state`を呼ぶ処理が一切存在しない**。つまり、この共有URLを別端末・別タブで開いても真っ白(または初期状態)にしかならない。フェーズ2で最優先に実装すること。
-- `src/backend/types.ts`は手書きのTypeScript interfaceであり、`supabase gen types typescript`等によるDBスキーマからの自動生成は行われていない。マイグレーションを変更した際に型が追従しない(ズレる)リスクがある。
+- `src/backend/supabase.ts`の`createWarikanBackend(config)`は、イベント作成・共有参加・幹事設定・支出・精算の17 RPCとRealtime Broadcastを型付きでラップし、`src/App.tsx`からクラウドイベント時に利用している。ローカルイベントとデモだけが`useWarikanApp`のローカル処理へフォールバックする。
+- 認証: `src/backend/useSupabaseAuth.ts`がGoogle OAuth開始・セッション復元・ログアウトを実装済み。2026-07-23に共有URLのpathname/queryをOAuth後も保持するよう修正し、Supabase AuthのSite URLとローカルRedirect URLも設定済み。同日、Google Cloudプロジェクト`polaris-503219`でOAuth Web Clientを作成し、SupabaseのGoogleプロバイダーを有効化した。実ブラウザでGoogleログイン、認証済み`create_event`、共有URL発行まで成功している。
+- 共有URL: `/e/{shareToken}`の初回解析、`get_event_state`、匿名参加、claim、自動本人復元まで実装済み。クラウド状態はlocalStorageへ複製せず、共有URLから再取得する。
+- DB型: `src/backend/database.types.ts`をリンク済みSupabaseから生成し、Supabase clientのgenericへ適用済み。テーブル・enum・RPC名／引数は生成型、`jsonb_build_object`の内部構造は`src/backend/types.ts`の画面向け契約型で扱う。
 
 ### 2.7 ホスティング・インフラ方針(決定済み)
 
@@ -206,7 +207,7 @@ Postgresマイグレーション4本が実装済み。
 
 ---
 
-## 4. 未解決の設計判断(着手前に決定すること)
+## 4. 設計判断(着手前に決定すること)
 
 以下はHANDOFF.mdおよび本書作成時点で未決定のまま残っている項目。該当フェーズに着手する前に必ず決定し、決定内容を`HANDOFF.md`および関連コードのコメントに残すこと。
 
@@ -215,8 +216,11 @@ Postgresマイグレーション4本が実装済み。
    - (b) Edge Functionで精算ロジックをTypeScriptとして一本化し、PL/pgSQL側は薄いラッパーにする。
    - (c) PL/pgSQL側を正とし、フロント側の計算はプレビュー表示専用(サーバー確定値と食い違い得る前提)と割り切る。
    いずれを選んでも、選定理由をHANDOFF.mdに残すこと。
+   - **決定・完了(2026-07-23)**: (a) 契約テストを採用した。PL/pgSQLをEdge Functionへ移す変更は認証・RLS境界まで広げるため、同一入力と完全一致比較で現在の二重実装を固定する。`src/domain/settlement.contract.test.ts`で、4人デモの確定済み7支出をTS版と全migration適用済みPGlite版へ投入し、方向・差額・相殺前金額・支出内訳まで一致することを検証する。
 2. **`unfinalize_event`時、既にreported/paidの精算が存在する場合の再確認フロー**: 現状RPC(`unfinalize_event`は`p_force`引数を持つ)はあるが、フロント側でどう確認ダイアログを出すか未設計。フェーズ2で設計すること。
+   - **決定・完了(2026-07-23)**: 最初の解除確認後は必ず`p_force=false`で安全に問い合わせる。RPCが`requiresConfirmation=true`を返した場合だけ、変更済み精算件数を明示した2回目の確認を表示し、同意後に`p_force=true`で解除する。ブラウザ標準ダイアログではなく画面内確認を使う。
 3. **精算内訳(`settlement_items`)をRPCレスポンスとしてどう返すか**: 型定義が未確定。フェーズ2で`src/backend/types.ts`(または自動生成型)に反映すること。
+   - **決定・完了(2026-07-23)**: `get_event_state`が返す各`Settlement`の`charges` / `offsets`を`SettlementBreakdownItem[]`として扱う。支出ID・名称・カテゴリ・金額・方向・日付indexを型付きで保持し、別のトップレベルレスポンス型は追加しない。`EventState.settlements: Settlement[]`からそのままUIへ渡す。
 4. **RLSポリシーと権限マトリクス(仕様書2節)の対応関係の明文化**: 現状「幹事=authenticated」「参加者=RPC内部の`require_actor`/`require_member`チェック」という二重構造になっている可能性が高い。フェーズ0でこの対応関係を実際に検証し、抜け漏れがあればRLSまたはRPC内部チェックを追加すること。
 
 ---
@@ -258,20 +262,22 @@ Postgresマイグレーション4本が実装済み。
 
 ---
 
-### フェーズ1: Google認証を実際に有効化する
+### フェーズ1: Google認証を実際に有効化する — 完了(2026-07-23)
 
 **タスク**:
-1. Google CloudでOAuth Web Clientを作成し、承認済みリダイレクトURIへ`https://nrixujdkgvexnnqfoned.supabase.co/auth/v1/callback`を追加する。(この作業自体は人間のオーナーがGoogle Cloud Consoleで行う必要がある。Codexが担当できるのは、必要な設定値・手順をドキュメント化するところまで。)
-2. Supabase Dashboard > Authentication > Sign In / Providers > Google にClient ID / Secretを設定し、有効化する。(同上、ダッシュボード操作は人間側の作業。)
-3. Authentication > URL ConfigurationへローカルURL(`http://localhost:5173`等)と本番URLを登録する。
+1. Google CloudでOAuth Web Clientを作成し、承認済みリダイレクトURIへ`https://nrixujdkgvexnnqfoned.supabase.co/auth/v1/callback`を追加する。
+2. Supabase Dashboard > Authentication > Sign In / Providers > Google にClient ID / Secretを設定し、有効化する。
+3. Authentication > URL ConfigurationへローカルURL(`http://localhost:5173`等)を登録する。本番URLはフェーズ3でデプロイ先が確定した後に追加する。
 4. コード側の対応: `src/backend/useSupabaseAuth.ts`の`signInWithGoogle`は実装済み。2026-07-23に`buildOAuthRedirectUrl`を追加し、共有URLのpathname/queryをログイン後も保持するよう改修・テスト済み。
 5. E2E確認: ローカル画面の「Googleでログイン」から実ログイン→`create_event`→共有URL発行までを確認する。
 
 **受け入れ条件**: 実ブラウザでGoogleログインが完了し、`auth.user`が取得でき、`create_event`が認証済みユーザーとして成功する。
 
+**完了実績**: Google Cloudプロジェクト`Polaris`(`polaris-503219`)を作成し、外部・テストモードのOAuth同意画面、Webクライアント、Supabase callback URI、テストユーザーを設定した。Supabase側でGoogleプロバイダーを有効化し、`http://localhost:5173`から実ログインして認証済みメール表示を確認した。検証用イベント「フェーズ1 E2E確認」の`create_event`が成功し、`/e/{shareToken}`形式の共有URLが発行された。Client Secretはリポジトリや文書へ保存していない。
+
 ---
 
-### フェーズ2: localStorage状態層をSupabaseへ接続する(最重要の配線フェーズ)
+### フェーズ2: localStorage状態層をSupabaseへ接続する — 完了(2026-07-23)
 
 **背景**: `createWarikanBackend`のRPCラッパーは14個中1個(`createEvent`)しか呼ばれていない。ここを埋めない限り、複数人での実利用は不可能。
 
@@ -284,34 +290,51 @@ Postgresマイグレーション4本が実装済み。
    - 既知のデバイストークン(localStorageに保存済み)がある場合は`claim_member`または`get_event_state`のactor解決で自動的に本人と紐付ける。
    - デバイストークンの生成には既存の`generateDeviceToken()`(`src/backend/supabase.ts`)を使うこと。
 
+   **完了(2026-07-23)**: `/e/{shareToken}`の初回ロード、未参加者向け名前入力、`join_event`、`?claim=`付きURLの`claim_member`、イベント単位のdevice token保存、ログイン済み幹事またはdevice token参加者のサーバー側actor解決を実装した。追加migrationをクラウドへ適用し、BrowserMCPで匿名参加と再読込後の本人復元まで確認済み。
+
 2. **支出まわりの接続**: `add_expense` / `update_expense` / `save_own_fixed_amount` / `finalize_expense` / `delete_expense`を、`src/components/ExpenseForm.tsx`および`useWarikanApp.ts`内の対応するローカル関数(`addExpense` / `saveDraftExpense` / `finalizeExpense`等)から、`backend`が存在する場合はRPC経由に切り替える。`backend`が`null`(Supabase未設定)の場合は既存のlocalStorageロジックにフォールバックする設計を維持する(開発中のオフライン確認用途として)。
 
+   **完了(2026-07-23)**: クラウドイベントでは5種の支出RPCへ接続し、ローカルイベント／デモでは既存状態処理へフォールバックするようにした。確定済み支出の編集・二段階削除UI、通信中表示、RPCエラー表示も追加した。BrowserMCPで匿名参加者による均等支出の追加・更新・削除、および別の立替者が作った金額指定暫定支出に対する`save_own_fixed_amount`を実クラウドで確認し、E2E支出データは確認後に削除した。
+
 3. **精算まわりの接続**: `finalize_event` / `unfinalize_event` / `report_settlement` / `confirm_settlement` / `revert_settlement`を同様に接続する。`unfinalize_event`呼び出し時は、4節-2で決定した再確認フローをここで実装する。
+
+   **完了(2026-07-23)**: クラウドイベントの確定・解除・支払い完了報告・受取確認・1段階取り消しを5種のRPCへ接続した。解除は`p_force=false`の安全確認後、変更済み精算がある場合だけ件数付きの再確認を経て`p_force=true`を送る。BrowserMCPで`pending → reported → paid → reported`、保護付き解除、通常状態への復帰まで実クラウドで確認した。4人デモ相当の精算計算はTS/Postgres契約テストで内訳まで一致を固定した。
 
 4. **リアルタイム同期の追加**(このフェーズで一緒に行うのが効率的): Supabase Realtimeを使い、`expenses` / `expense_targets` / `settlements` / `settlement_items`テーブルのPostgres Changesを購読し、他の参加者の入力を画面へ即座に反映する。実装方針:
    - `supabase.channel('event:{eventId}').on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `event_id=eq.${eventId}` }, callback)`のようなチャンネル購読を`useWarikanApp.ts`(またはRealtime専用の新規フック`useEventRealtime.ts`)に実装する。
    - RLSが有効なテーブルに対するRealtime購読は、Supabase側でRealtime用のRLSポリシー(`for select`)が必要になる場合があるため、フェーズ0で洗い出した権限マトリクスと矛盾しないことを確認する。
    - 楽観的UI更新(自分の操作は即座に画面反映し、裏でRPCが確定する)も検討するが、必須ではない。まずは他者の変更が数秒以内に画面へ反映されることを優先する。
 
+   **完了(2026-07-23)**: アカウントレス参加者はJWTにevent所属を持たず、Postgres ChangesのRLSで安全にイベント行だけを許可できないため、公開テーブルSELECT権限は追加しない方針に変更した。代わりに十分なエントロピーを持つshare token由来のRealtime Broadcastチャンネルへ、データを含まない`event_changed`通知だけを送る。受信側は既存の`get_event_state(shareToken, deviceToken)`で本人確認付きの全状態を再取得する。連続通知は再取得中に1回へまとめ、画面位置を保持する。実クラウドでブラウザからNode購読クライアントへの通知到達と、Node側の参加追加がブラウザへリロードなしで反映されることを確認した。
+
 5. **localStorage永続化ロジックの縮小**: `backend`が存在する場合は`localStorage`への保存を段階的に無効化する。ただし、フェーズ7のオフライン対応(電波が無い間の下書き保存)と競合しないよう、「未送信の下書き」用途のlocalStorage利用は残す設計にすること。
 
+   **完了(2026-07-23)**: 状態へ`persistence: local | remote`を追加し、クラウドから読み込んだイベント本体・参加者・支出・精算は`warikan.web.mvp.v1`へ保存せず、既存スナップショットも削除するようにした。ローカル作成イベントとデモだけは従来どおり再読込後も復元する。旧buildの保存データは、ローカル生成の36桁hex share tokenだけをローカル状態として移行し、32桁base64urlのクラウドスナップショットは復元しない。device token/member IDは別キー`warikan.web.event-sessions.v1`へ残すが、本人判定は引き続きサーバーRPCが行う。フェーズ7の未送信下書きはイベント本体と分離した専用ストアとして追加する方針とし、現時点ではサーバー保存済みdraftだけを扱う。
+
 6. `src/backend/types.ts`の手書きinterfaceを、可能であれば`supabase gen types typescript`によるDBスキーマからの自動生成に置き換える(このタスクはフェーズ6と重複するため、フェーズ2で先に着手しても構わない)。
+
+   **完了(2026-07-23)**: `npm run backend:types`でリンク済みSupabaseのpublic schemaを`src/backend/database.types.ts`へ再生成できるようにし、`createClient<Database>` / `SupabaseClient<Database>`へ適用した。RPC名・引数、table、enumは生成型で検査する。RPCが返す任意構造JSONは生成器上`Json`となるため、`EventState`等の画面向けレスポンス契約は`src/backend/types.ts`へ残す。CLI生成型がSQLのnullable function引数を非NULLとして出力する箇所は、該当キーだけを`allowSqlNull`で補正し、他の引数検査を維持する。再生成手順はREADMEへ記載した。
 
 **受け入れ条件**:
 - 別端末・別ブラウザで共有URLを開いた際に、実際のイベントデータ(参加者・支出・精算状況)が表示される。
 - 参加者Aが支出を追加すると、参加者Bの画面が(リロードなしで)数秒以内に更新される。
 - `createFourPersonDemoData`相当のシナリオを、Supabase接続状態で実際に複数ブラウザタブを使って再現し、精算結果がフロントのドメインロジック(`src/domain/settlement.ts`)と一致することを確認する。
 
+**完了実績**: 実クラウドイベントへ「あなた・ブラウザ参加者・ケンタ・サキ」の4人と、標準4人デモの暫定支出を除く7支出(合計115,400円)を同じ固定内訳で投入した。幹事ブラウザと独立した2つのNode参加者クライアントで、4人・7支出の取得とRealtime反映を確認した。`finalize_event`後の6精算は、支払方向・差額・gross・offset・charge/offset支出IDまで同じ入力のドメイン計算と完全一致した。BrowserMCPでも確定済み6組(5,000円、2,200円、2,300円、14,000円、7,700円、14,400円)と4人の関係マップを確認した。さらにChromeの2タブで同じ共有URLを開き、片方で追加した支出がもう片方へリロードなしで表示されることを確認した。終了後は確定解除し、検証用支出・参加者を削除して、active・既存2人・0支出・0精算へ戻した。
+
 ---
 
 ### フェーズ3: 本番デプロイとマルチデバイス確認
 
 **タスク**:
-1. NetlifyへHTTPSデプロイする(`netlify.toml`は既に存在するため設定変更は基本的に不要)。
-2. 複数スマートフォンで、共有URL発行→別端末で参加→支出入力→精算確定までのE2Eフローを確認する。
-3. PWAインストール(ホーム画面追加)を実機で確認する。
+  1. NetlifyへHTTPSデプロイする(`netlify.toml`は既に存在するため設定変更は基本的に不要)。**完了 (2026-07-23)**: `polaris-warikan` を作成し、本番URL `https://polaris-warikan.netlify.app` へ1回だけ本番デプロイ。Supabaseの本番環境変数を設定し、HTTP 200とBrowserMCPでSPA表示を確認。Auth URL ConfigurationのSite URLと本番Redirect URL (`/**`) も登録済み。
+  2. 複数スマートフォンで、共有URL発行→別端末で参加→支出入力→精算確定までのE2Eフローを確認する。
+  3. PWAインストール(ホーム画面追加)を実機で確認する。**生成物確認済み (2026-07-23)**: 本番の`manifest.webmanifest` / Service Workerを確認。実機のホーム画面追加は未確認。
 
-**受け入れ条件**: 本番URL経由で複数デバイスから同時にイベントへ参加し、リアルタイムに反映される支出・精算状況を確認できる。
+  **受け入れ条件**: 本番URL経由で複数デバイスから同時にイベントへ参加し、リアルタイムに反映される支出・精算状況を確認できる。
+
+  **追加確認 (2026-07-23)**: 本番の「Googleでログイン」から`pokemonclub820@gmail.com`で実ログインし、認証済み表示を確認。イベント「本番OAuth確認」を作成し、共有URL発行まで成功。確認後にイベントを削除してクラウドをクリーンアップ済み。別アカウントではGoogle側の追加本人確認が発生したが、OAuth設定・本番リダイレクト自体の到達性は確認済み。
+  **実機依存の明確化 (2026-07-23)**: BrowserMCPでは別端末／別ブラウザセッションを作成できないため、複数端末の最終受け入れとホーム画面追加は未完了のまま保持。実施手順を`HANDOFF.md`へ記録した。
 
 ---
 
@@ -348,7 +371,13 @@ Postgresマイグレーション4本が実装済み。
 4. dispatcherの起動方法: Supabase Cron(pg_cron)またはEdge Functionsのスケジュール実行機能を使い、一定間隔(例: 1分ごと)でdispatcherを呼び出す。
 5. `organizer_upsert_integration`から実際にLINE公式アカウント/Discord Webhook URLを登録するUIを`EventSettingsView.tsx`(幹事専用設定画面)に追加する。
 
-**受け入れ条件**: 幹事がイベント設定画面からDiscord Webhook URLを登録し、催促通知を送信すると、実際にDiscordチャンネルへメッセージが届く。LINEも同様。
+  **受け入れ条件**: 幹事がイベント設定画面からDiscord Webhook URLを登録し、催促通知を送信すると、実際にDiscordチャンネルへメッセージが届く。LINEも同様。
+
+  **着手前確認 (2026-07-23)**: outboxテーブルと`organizer_upsert_integration` / `organizer_queue_notification`は存在するが、現在の登録RPCは`config`(Webhook秘密情報)を受け取らず、フロントにも登録UIがない。Edge Function実装前に、Webhook URLをクライアントへ返さず暗号化・秘密管理する境界と、Discord/LINEの外部送信結果を記録するRPCまたはservice-role更新処理を確定する。実Webhookへの送信はこの設計確定後に行う。
+  **通知アダプター基盤 (2026-07-23)**: `src/notifications/adapters.ts`にDiscord Webhook / LINE Push向けのメッセージ正規化を追加し、空payload、タイトル+URLフォールバック、Discord mention無効化をユニットテストで固定した。外部送信・秘密情報はまだ扱わない。
+  **dispatcher骨格 (2026-07-23)**: `supabase/functions/notification-dispatcher/index.ts`を追加。due jobの取得、processing遷移、Discord送信、配送履歴、指数バックオフ、最大試行回数到達時のfailed化まで実装。LINEは秘密管理境界確定まで明示的にunsupported。`20260723000200_notification_claim.sql`の`FOR UPDATE SKIP LOCKED`によるatomic claim RPCで多重Cron時の重複取得を防止する。
+  **LINE dispatcher (2026-07-23)**: `LINE_CHANNEL_ACCESS_TOKEN`をEdge Function環境変数からのみ取得し、`external_space_id`を宛先としてLINE Push APIへ送信する経路を追加。request IDを配送履歴へ保存し、Discord 2,000文字／LINE 5,000文字の上限をアダプターとテストで固定した。実トークン設定・実配送は未実施。
+  **通知先登録UI・秘密管理 (2026-07-23)**: 幹事設定にDiscord／LINE通知先の登録、接続済み表示、変更、削除、テスト通知キュー追加を実装。Discord Webhook URLは公開RPCや`VITE_*`へ渡して保存せず、認証・幹事権限を再確認する`integration-settings` Edge FunctionでAES-256-GCM暗号化し、DBには暗号文だけを保持する。LINEは秘密でないUser／Group／Room IDを登録し、画面には末尾だけを表示する。暗号鍵はSupabase Function secretへ設定し、`integration-settings`と暗号復号対応済み`notification-dispatcher`を本番へデプロイ。未認証呼び出しが401になること、ユニットテスト77件・Playwright 16件を確認し、Netlify Deploy `6a61c1aa254402e0ea1eea83`へ反映。実Webhook／LINE tokenによる外部配送は未確認。
 
 ---
 
@@ -356,7 +385,7 @@ Postgresマイグレーション4本が実装済み。
 
 **タスク**:
 1. **コード分割**: `React.lazy` + `Suspense`を使い、幹事専用画面(`EventSettingsView.tsx`)や使用頻度の低い画面を動的importに変更し、初回バンドルサイズを削減する。
-2. **型の自動生成**: `supabase gen types typescript --project-id nrixujdkgvexnnqfoned`(またはローカルスキーマから)で生成した型を`src/backend/generated-types.ts`等に配置し、`src/backend/types.ts`の手書きinterfaceをこれで置き換えるか、これをベースにした型に統一する。マイグレーション変更時に型生成コマンドを再実行する運用をREADMEに明記する。
+2. **型の自動生成 — フェーズ2で完了**: `npm run backend:types`、`src/backend/database.types.ts`、型付きSupabase clientを導入済み。migration変更時に型生成とbuildを再実行する運用もREADMEへ記載済み。
 3. **マイクロインタラクション**: ボタン押下時のフィードバック、データ取得中のスケルトンローディング表示、支出追加・精算操作の楽観的UI更新(サーバー応答を待たずに画面へ即時反映し、失敗時にロールバックする)を追加する。既存の`app-view-enter`アニメーション(`styles.css`)との一貫性を保つこと。
 4. **E2Eテスト自動化**: Playwrightを導入し、以下の基本シナリオを自動テスト化する。
    - イベント作成 → 支出追加(均等割り・金額指定の両方) → 精算確定 → 支払い報告・確認の一連のフロー
@@ -364,7 +393,19 @@ Postgresマイグレーション4本が実装済み。
    - モバイル幅(390px)・デスクトップ幅(1280px)のレイアウト崩れがないことの確認
    これらをフェーズ0.5のCIワークフローに組み込む。
 
-**受け入れ条件**: Lighthouseパフォーマンススコアの初回計測値を記録し、コード分割後に初回読み込みJSサイズが計測可能な形で削減されていること。PlaywrightのE2EテストがCI上で自動実行され成功すること。
+  **受け入れ条件**: Lighthouseパフォーマンススコアの初回計測値を記録し、コード分割後に初回読み込みJSサイズが計測可能な形で削減されていること。PlaywrightのE2EテストがCI上で自動実行され成功すること。
+
+  **コード分割着手 (2026-07-23)**: 幹事専用`EventSettingsView`を`React.lazy` + `Suspense`で分離。初回JSは約502KBから約495KBへ、設定画面チャンク7.47KBへ分割された。残りは他の低頻度画面、Lighthouse計測、Playwright導入。
+  **コード分割拡張 (2026-07-23)**: `AdvanceDashboardView`と`SettlementView`も遅延ロード化。初回JSは約462.6KBまで削減され、設定7.46KB、ダッシュボード8.24KB、精算25.06KBの独立チャンクを生成。残りはLighthouse計測、Playwright導入、マイクロインタラクション。
+  **Lighthouse初回計測 (2026-07-23)**: 本番URLをデスクトップ設定で計測し、Performanceスコア0.93、FCPスコア0.83、LCPスコア0.96、TBTスコア1.00を記録。Speed Indexスコアは0.54で、ネットワーク条件に依存するため改善前の基準値として扱う。Playwright導入とCI接続は未着手。
+  **Playwrightスモーク (2026-07-23)**: `@playwright/test`、Chromiumのデスクトップ／Pixel 5相当プロジェクト、ローカルpreview webServerを追加。作成画面・4人デモ表示・横スクロールなしを4ケース（Desktop 2 / Mobile 2）で確認。CIにChromium導入と`npm run test:e2e`を追加した。OAuth依存のクラウドE2Eは別の実機受け入れに残す。
+  **画面遷移スモーク拡張 (2026-07-23)**: 4人デモから立替ダッシュボード、全員の精算状況、支払いタブへの遷移をDesktop／Pixel 5相当の両方で追加確認。Playwrightは6ケース全件成功。
+  **支出フォームスモーク (2026-07-23)**: Desktop／Pixel 5相当で支出追加フォームを開き、キャンセル後に8件のデモ状態が維持されることを追加確認。Playwrightは8ケース全件成功。
+  **支出追加E2E (2026-07-23)**: Desktop／Pixel 5相当で内容「E2Eテストの昼食」・1,200円を入力して追加し、9件目の一覧表示を確認。Playwrightは10ケース全件成功。
+  **支出CRUD E2E (2026-07-23)**: ローカルデモで支出追加→1,200円から2,400円へ編集→削除→8件へ復帰する完全フローをDesktop／Pixel 5相当で追加。モバイル削除確認が固定アクションバーに遮られる不具合を検出し、確認中は固定バーを非表示にして修正。Playwrightは12ケース全件成功。`test:e2e`は実行前にbuildして古いpreview資産を避ける。
+  **Playwright CIレポート (2026-07-23)**: list＋HTML reporterを有効化し、GitHub Actionsで`playwright-report`を成否に関係なく7日間artifact保存する。ローカル12ケース全件成功を再確認。
+  **PWA配信E2E (2026-07-23)**: ビルド後のpreviewに対し、`manifest.webmanifest`のアプリ名・`standalone`表示・開始URLと、Service Worker `/sw.js`の配信成功をDesktop／Pixel 5相当で自動確認するケースを追加。Playwrightは14ケース全件成功。ホーム画面追加とオフライン復帰の実機確認は引き続きフェーズ3・7の受け入れ残件。
+  **性能回帰バジェット (2026-07-23)**: `scripts/lighthouse-audit.mjs`でローカルproduction previewの初回表示をDesktop 1280px／Mobile 390pxで計測し、Performance、FCP、LCP、CLS、JS/CSS/JSON転送量をJSON出力する。SPA内の動的画面を同一URLの別ページとして水増しせず、設定・ダッシュボード・精算の遅延チャンクは`dist`実ファイルサイズで決定的に追跡する。`LIGHTHOUSE_BASELINES.json`比10%超で警告、20%超で失敗。基準値はDesktop 1.00（FCP 405ms/LCP 463ms）、Mobile 0.97（FCP 1,936ms/LCP 2,086ms）、初回JS 486,979 bytes。CIで自動実行し、結果artifactを7日保存する。
 
 ---
 
@@ -375,7 +416,12 @@ Postgresマイグレーション4本が実装済み。
 2. **エラー監視**: Sentry等のエラートラッキングサービスを導入し、フロントエンドの実行時エラーを収集する。個人情報(参加者名等)がエラーレポートに含まれないようスクラビング設定を行う。
 3. **共有URLのセキュリティ強化**: 参加者はログイン不要で共有URL(`share_token`)のみでアクセスできる設計のため、総当たり攻撃やレートリミット未設定によるアクセス試行のリスクがある。Supabase側のRate Limiting機能、またはRPC呼び出し頻度に対する簡易的なレートリミット(例: 同一IPからの`get_event_state`呼び出し回数制限)を検討する。`share_token`の生成に十分なエントロピー(既存実装で32byteランダム値相当)が使われていることも改めて確認する。
 
-**受け入れ条件**: オフライン状態で入力した支出が、オンライン復帰後に自動送信され、他の参加者の画面にも反映されることを実機で確認する。エラー監視サービスのダッシュボードで実際のエラーが収集されることを確認する。
+  **受け入れ条件**: オフライン状態で入力した支出が、オンライン復帰後に自動送信され、他の参加者の画面にも反映されることを実機で確認する。エラー監視サービスのダッシュボードで実際のエラーが収集されることを確認する。
+
+  **Sentry基盤 (2026-07-23)**: `VITE_SENTRY_DSN`が設定された場合だけ`@sentry/react`を初期化し、Error Boundaryを追加。`sendDefaultPii=false`に加え、共有token、claim、device token、参加者名、Authorization/Cookieを`beforeSend`で再帰的にマスクするテストを追加。DSN未設定時は送信しない。実Sentryプロジェクト・本番イベント到達確認は未実施。
+  **オフライン支出キュー基盤 (2026-07-23)**: クラウドイベントで新規支出をオフライン送信した場合、device tokenを含めず専用キー`warikan.web.pending-expenses.v1`へ保存。`online`復帰時にイベント単位・登録順で`add_expense`を再送し、成功項目だけ削除してRealtime通知・状態再取得を行う。既存支出のオフライン編集は安全のため拒否。実機でのオフライン→復帰確認は未実施。
+  **オフライン再送耐性・UI (2026-07-23)**: 未送信支出に`pending` / `sending` / `failed`、試行回数、最終エラーを保持し、即時・3秒後・9秒後の最大3回で登録順に再送する。待機中・送信中・失敗を支出一覧に表示し、失敗後の手動リトライと未送信データ削除を追加。旧形式キューの復元、イベント分離、順序、バックオフ、成功削除、失敗遷移をユニットテストで検証し、全68件が成功。実クラウドイベントを使う端末間のオフライン復帰確認は残件。
+  **共有URLローテーション (2026-07-23)**: 新規イベントの`share_token`生成を32ランダムbyte（base64url 43文字）へ引き上げ、認証済み幹事だけが実行できる`organizer_regenerate_share_token`を追加。再発行時は旧tokenが即時無効になり、監査ログへ記録する。設定画面に影響説明・二段階確認を伴う再発行UIを追加し、PGliteで新tokenの長さ、旧token拒否、新token成功を検証。既存の24byte tokenも192bitのエントロピーを持つため即時移行は不要で、必要時に再発行できる。同一IPベースの制限はPostgres RPCから信頼できる送信元IPを取得できないためアプリ内では擬似実装せず、Supabase側のWAF／Rate Limiting設定を本番運用残件とする。
 
 ---
 
@@ -416,9 +462,15 @@ Postgresマイグレーション4本が実装済み。
 
 **未確定事項**: このビューは会話内でモックアップ(HTMLウィジェット)としては提示したのみで、6.1のような詳細なコンポーネント設計(ファイル配置、props、状態管理方針)はまだ詰めていない。着手承認が出た場合は、6.1と同様の粒度で改めて詳細仕様を書き起こしてから実装に入ること。想定される位置づけは「マップ(構造把握)」「マトリクス(正確な金額の一覧性)」「カード(詳細根拠)」の3ビュー体制で、幹事視点のデフォルト表示をカード一覧からマトリクスに変更する案も出ている(未決定)。
 
+**実装済み (2026-07-23)**: `SettlementMatrixView`を追加し、関係マップ／金額表のタブで切り替える。行=支払者、列=受取人、対角線と精算なしセルは空表示、有向の6精算を別セルで表示する。支払い済みはチェックと低opacity、金額セル選択は既存比較カード・内訳へ連動する。モバイルは表だけ横スクロール可能にしページ全体の横はみ出しを防止。4人デモの6金額（14,400円を含む）をDesktop／Pixel 5相当で確認し、Playwright全16件が成功。既存の関係マップと比較カードは維持する。
+
+**本番反映 (2026-07-23)**: フェーズ7のオフラインキュー・Sentry基盤・共有URLローテーションと本マトリクスを1回にまとめ、Netlify Deploy `6a61be9b110f068539eaf479`へ反映。Supabaseには通知claimとURLローテーションの2マイグレーションを適用した。新規Chromiumで本番をDesktop 1280px／Mobile 390pxの両方から開き、HTTP 200、6金額、14,400円、ページ横はみ出しなし、console error 0件を確認した。
+
 ### 6.3 参加者名の予約語バリデーション(Issue #2)
 
 `memberDisplayName`のロジック修正(フェーズ4で完了)により表示層のバグは解消したが、そもそも参加者が自分の名前として「あなた」「幹事」等の予約語を入力すること自体を防ぐバリデーションは未実装。入力バリデーション層(名前入力フォームの制約)として別途対応する。表示ロジック側で吸収しようとしない(過去にそれで表示バグが発生した経緯があるため)。
+
+**完了 (2026-07-23)**: `validateMemberName`を純粋関数として追加し、共有URL参加画面と幹事代理登録でtrim後の「あなた」「幹事」を拒否する。前後空白、許可語（「あなたさん」「アナタ」「幹事さん」）を含むケースをユニットテストで固定し、入力欄へ`aria-invalid`を付与した。
 
 ---
 

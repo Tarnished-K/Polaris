@@ -7,6 +7,7 @@ import {
   type Member,
   type WarikanEvent,
 } from '../domain/types'
+import type { PendingExpense } from '../state/pendingExpenseQueue'
 import { CategoryMonogram } from './CategoryMonogram'
 import { EventHeader } from './EventHeader'
 import {
@@ -28,7 +29,10 @@ interface HomeViewProps {
   onOpenPayment: () => void
   onOpenDashboard: () => void
   onOpenSettings: () => void
-  onFinalizeDraft: (expenseId: string) => void
+  onEditExpense: (expenseId: string) => void
+  pendingExpenses?: PendingExpense[]
+  onRetryPendingExpense?: (pendingId: string) => void
+  onRemovePendingExpense?: (pendingId: string) => void
 }
 
 type CategoryFilter = 'all' | CategoryId
@@ -37,14 +41,14 @@ function ExpenseRow({
   expense,
   members,
   currentMemberId,
-  canEditDraft,
-  onFinalizeDraft,
+  canEditExpense,
+  onEditExpense,
 }: {
   expense: Expense
   members: Member[]
   currentMemberId: string | null
-  canEditDraft: boolean
-  onFinalizeDraft: (expenseId: string) => void
+  canEditExpense: boolean
+  onEditExpense: (expenseId: string) => void
 }) {
   const payer = memberName(members, expense.payerMemberId)
   const targetMembers = expense.targetMemberIds
@@ -96,17 +100,64 @@ function ExpenseRow({
             </div>
           </details>
         )}
-        {expense.status === 'draft' && canEditDraft && (
+        {canEditExpense && (
           <button
             type="button"
             className="draft-finalize-link"
-            onClick={() => onFinalizeDraft(expense.id)}
+            onClick={() => onEditExpense(expense.id)}
           >
-            {expense.payerMemberId === currentMemberId || members.find((member) => member.id === currentMemberId)?.isOrganizer
-              ? '内訳を入力・確定'
-              : '自分の負担額を入力'}
+            {expense.status === 'finalized'
+              ? '支出を編集'
+              : expense.payerMemberId === currentMemberId || members.find((member) => member.id === currentMemberId)?.isOrganizer
+                ? '内訳を入力・確定'
+                : '自分の負担額を入力'}
           </button>
         )}
+      </div>
+    </article>
+  )
+}
+
+function PendingExpenseRow({
+  pending,
+  members,
+  onRetry,
+  onRemove,
+}: {
+  pending: PendingExpense
+  members: Member[]
+  onRetry?: (pendingId: string) => void
+  onRemove?: (pendingId: string) => void
+}) {
+  const meta = CATEGORY_META[pending.input.category]
+  const payer = memberName(members, pending.input.payerMemberId)
+  const statusLabel = pending.status === 'sending'
+    ? '送信中…'
+    : pending.status === 'failed'
+      ? '送信に失敗しました'
+      : 'オフラインのため待機中'
+  return (
+    <article className={`pending-expense pending-expense--${pending.status}`} aria-live="polite">
+      <CategoryMonogram category={pending.input.category} size="large" />
+      <div className="pending-expense__body">
+        <div className="pending-expense__heading">
+          <div><span>{meta.label}</span><h3>{pending.input.title}</h3></div>
+          <strong>{formatYen(pending.input.amount)}</strong>
+        </div>
+        <p>立替者: {payer}</p>
+        <p className="pending-expense__status">
+          {pending.status === 'sending' && <span className="pending-expense__spinner" aria-hidden="true" />}
+          {statusLabel}
+          {pending.status === 'failed' && pending.lastError ? `（${pending.lastError}）` : ''}
+        </p>
+        <div className="pending-expense__actions">
+          {pending.status === 'failed' && onRetry && (
+            <button type="button" className="button button--secondary" onClick={() => onRetry(pending.id)}>リトライ</button>
+          )}
+          {pending.status !== 'sending' && onRemove && (
+            <button type="button" className="button button--ghost" onClick={() => onRemove(pending.id)}>未送信データを削除</button>
+          )}
+        </div>
       </div>
     </article>
   )
@@ -123,7 +174,10 @@ export function HomeView({
   onOpenPayment,
   onOpenDashboard,
   onOpenSettings,
-  onFinalizeDraft,
+  onEditExpense,
+  pendingExpenses = [],
+  onRetryPendingExpense,
+  onRemovePendingExpense,
 }: HomeViewProps) {
   const [filter, setFilter] = useState<CategoryFilter>('all')
   const [memberFilter, setMemberFilter] = useState('all')
@@ -192,7 +246,7 @@ export function HomeView({
                 <p className="eyebrow">支出一覧</p>
                 <h2 id="expenses-heading">みんなの支出</h2>
               </div>
-              <span className="count-label">{visibleExpenses.length}件</span>
+              <span className="count-label">{visibleExpenses.length + pendingExpenses.length}件</span>
             </div>
 
             <div className="expense-filter-toolbar">
@@ -236,6 +290,20 @@ export function HomeView({
               ))}
             </div>
 
+            {pendingExpenses.length > 0 && (
+              <div className="pending-expenses" aria-label="未送信の支出">
+                {pendingExpenses.map((pending) => (
+                  <PendingExpenseRow
+                    key={pending.id}
+                    pending={pending}
+                    members={members}
+                    onRetry={onRetryPendingExpense}
+                    onRemove={onRemovePendingExpense}
+                  />
+                ))}
+              </div>
+            )}
+
             {visibleExpenses.length === 0 ? (
               <div className="empty-card">
                 <span className="empty-card__icon" aria-hidden="true">¥</span>
@@ -259,8 +327,8 @@ export function HomeView({
                           expense={expense}
                           members={members}
                           currentMemberId={currentMemberId}
-                          canEditDraft={isOrganizer || expense.payerMemberId === currentMemberId || expense.targetMemberIds.includes(currentMemberId ?? '')}
-                          onFinalizeDraft={onFinalizeDraft}
+                          canEditExpense={event.status === 'active' && (isOrganizer || expense.payerMemberId === currentMemberId || (expense.status === 'draft' && expense.targetMemberIds.includes(currentMemberId ?? '')))}
+                          onEditExpense={onEditExpense}
                           key={expense.id}
                         />
                       ))}
@@ -275,8 +343,8 @@ export function HomeView({
                     expense={expense}
                     members={members}
                     currentMemberId={currentMemberId}
-                    canEditDraft={isOrganizer || expense.payerMemberId === currentMemberId || expense.targetMemberIds.includes(currentMemberId ?? '')}
-                    onFinalizeDraft={onFinalizeDraft}
+                    canEditExpense={event.status === 'active' && (isOrganizer || expense.payerMemberId === currentMemberId || (expense.status === 'draft' && expense.targetMemberIds.includes(currentMemberId ?? '')))}
+                    onEditExpense={onEditExpense}
                     key={expense.id}
                   />
                 ))}

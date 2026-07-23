@@ -12,6 +12,7 @@ select has_table('public', 'settlements', 'settlements table exists');
 select has_table('public', 'event_integrations', 'event integrations table exists');
 select has_table('public', 'notification_jobs', 'notification outbox exists');
 select has_function('public', 'get_event_state', array['text'], 'public state RPC exists');
+select has_function('public', 'get_event_state', array['text', 'text'], 'actor-aware state RPC exists');
 select has_function('public', 'join_event', array['text', 'text', 'text'], 'join RPC exists');
 
 insert into auth.users(id, email, created_at, updated_at)

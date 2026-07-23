@@ -1,6 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 
 import type { EventDraft, Expense, Member, WarikanEvent } from '../domain/types'
+import type { IntegrationProvider, NotificationIntegration } from '../backend/types'
+import { validateDiscordWebhookUrl, validateLineDestination, validateMemberName } from '../lib/validation'
+import { INTEGRATION_TEST_MESSAGE } from '../notifications/adapters'
 import { EventHeader } from './EventHeader'
 import { memberPillStyle } from './ui'
 
@@ -8,9 +11,14 @@ interface EventSettingsViewProps {
   event: WarikanEvent
   members: Member[]
   expenses: Expense[]
-  onSave: (draft: EventDraft) => void
-  onAddMember: (name: string) => void
-  onRemoveMember: (memberId: string) => void
+  onSave: (draft: EventDraft) => void | Promise<void>
+  onAddMember: (name: string) => void | Promise<void>
+  onRemoveMember: (memberId: string) => void | Promise<void>
+  onRegenerateShareToken?: () => void | Promise<void>
+  onListNotificationIntegrations?: () => Promise<NotificationIntegration[]>
+  onSaveNotificationIntegration?: (provider: IntegrationProvider, destination: string) => Promise<NotificationIntegration>
+  onDeleteNotificationIntegration?: (provider: IntegrationProvider) => Promise<void>
+  onQueueTestNotification?: (integrationId: string, message: string) => Promise<string>
   onOpenExpenses: () => void
   onOpenDashboard: () => void
   onOpenSettlements: () => void
@@ -25,6 +33,11 @@ export function EventSettingsView({
   onSave,
   onAddMember,
   onRemoveMember,
+  onRegenerateShareToken,
+  onListNotificationIntegrations,
+  onSaveNotificationIntegration,
+  onDeleteNotificationIntegration,
+  onQueueTestNotification,
   onOpenExpenses,
   onOpenDashboard,
   onOpenSettlements,
@@ -39,21 +52,39 @@ export function EventSettingsView({
   const [newMemberName, setNewMemberName] = useState('')
   const [message, setMessage] = useState('')
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [confirmingShareTokenRotation, setConfirmingShareTokenRotation] = useState(false)
+  const [integrations, setIntegrations] = useState<NotificationIntegration[]>([])
+  const [discordWebhookUrl, setDiscordWebhookUrl] = useState('')
+  const [lineDestination, setLineDestination] = useState('')
+  const [integrationBusy, setIntegrationBusy] = useState<IntegrationProvider | null>(null)
+  const [testPrompt, setTestPrompt] = useState<NotificationIntegration | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  const saveEvent = (submitEvent: FormEvent) => {
+  const saveEvent = async (submitEvent: FormEvent) => {
     submitEvent.preventDefault()
     if (!title.trim() || !startDate || (eventType === 'overnight' && (!endDate || endDate < startDate))) {
       setMessage('イベント名と正しい日付を入力してください。')
       return
     }
-    onSave({ title, eventType, startDate, endDate: eventType === 'single_day' ? startDate : endDate, capacity })
-    setMessage('イベント設定を保存しました。')
+    setBusy(true)
+    try {
+      await onSave({ title, eventType, startDate, endDate: eventType === 'single_day' ? startDate : endDate, capacity })
+      setMessage('イベント設定を保存しました。')
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : 'イベント設定を保存できませんでした。')
+    } finally {
+      setBusy(false)
+    }
   }
 
-  const addMember = (submitEvent: FormEvent) => {
+  const addMember = async (submitEvent: FormEvent) => {
     submitEvent.preventDefault()
     const name = newMemberName.trim()
-    if (!name) return
+    const validation = validateMemberName(name)
+    if (!validation.valid) {
+      setMessage(validation.error ?? '参加者名を確認してください。')
+      return
+    }
     if (members.length >= 50) {
       setMessage('登録できる参加者は最大50人です。')
       return
@@ -62,10 +93,105 @@ export function EventSettingsView({
       setMessage('同じ名前の参加者がすでにいます。')
       return
     }
-    onAddMember(name)
-    if (members.length >= capacity) setCapacity(Math.min(50, members.length + 1))
-    setNewMemberName('')
-    setMessage(`${name}さんを幹事が代理登録しました。`)
+    setBusy(true)
+    try {
+      await onAddMember(name)
+      if (members.length >= capacity) setCapacity(Math.min(50, members.length + 1))
+      setNewMemberName('')
+      setMessage(`${name}さんを幹事が代理登録しました。`)
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : '参加者を追加できませんでした。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const removeMember = async (member: Member) => {
+    setBusy(true)
+    try {
+      await onRemoveMember(member.id)
+      setMessage(`${member.name}さんを参加者から削除しました。`)
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : '参加者を削除できませんでした。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const regenerateShareToken = async () => {
+    if (!onRegenerateShareToken) return
+    setBusy(true)
+    try {
+      await onRegenerateShareToken()
+      setConfirmingShareTokenRotation(false)
+      setMessage('共有URLを再発行しました。以前のURLは無効です。新しいURLを参加者へ共有してください。')
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : '共有URLを再発行できませんでした。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!onListNotificationIntegrations) return
+    let active = true
+    void onListNotificationIntegrations()
+      .then((items) => { if (active) setIntegrations(items) })
+      .catch((cause) => { if (active) setMessage(cause instanceof Error ? cause.message : '通知設定を読み込めませんでした。') })
+    return () => { active = false }
+  }, [onListNotificationIntegrations])
+
+  const saveIntegration = async (provider: IntegrationProvider) => {
+    if (!onSaveNotificationIntegration) return
+    const destination = provider === 'discord' ? discordWebhookUrl : lineDestination
+    const validation = provider === 'discord'
+      ? validateDiscordWebhookUrl(destination)
+      : validateLineDestination(destination)
+    if (!validation.valid) {
+      setMessage(validation.error ?? '通知先を確認してください。')
+      return
+    }
+    setIntegrationBusy(provider)
+    try {
+      const integration = await onSaveNotificationIntegration(provider, destination)
+      setIntegrations((items) => [...items.filter((item) => item.provider !== provider), integration])
+      if (provider === 'discord') setDiscordWebhookUrl('')
+      else setLineDestination('')
+      setTestPrompt(integration)
+      setMessage(`${provider === 'discord' ? 'Discord' : 'LINE'}の通知先を安全に保存しました。`)
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : '通知先を保存できませんでした。')
+    } finally {
+      setIntegrationBusy(null)
+    }
+  }
+
+  const deleteIntegration = async (provider: IntegrationProvider) => {
+    if (!onDeleteNotificationIntegration) return
+    setIntegrationBusy(provider)
+    try {
+      await onDeleteNotificationIntegration(provider)
+      setIntegrations((items) => items.filter((item) => item.provider !== provider))
+      setMessage(`${provider === 'discord' ? 'Discord' : 'LINE'}連携を削除しました。`)
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : '通知連携を削除できませんでした。')
+    } finally {
+      setIntegrationBusy(null)
+    }
+  }
+
+  const queueTestNotification = async () => {
+    if (!testPrompt || !onQueueTestNotification) return
+    setIntegrationBusy(testPrompt.provider)
+    try {
+      await onQueueTestNotification(testPrompt.id, INTEGRATION_TEST_MESSAGE)
+      setMessage('テスト通知を送信キューへ追加しました。')
+      setTestPrompt(null)
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : 'テスト通知を追加できませんでした。')
+    } finally {
+      setIntegrationBusy(null)
+    }
   }
 
   return (
@@ -112,7 +238,7 @@ export function EventSettingsView({
             <label className="field settings-capacity"><span className="field__label">定員</span><span><input type="number" min={members.length} max={50} value={capacity} onChange={(changeEvent) => setCapacity(Math.max(members.length, Math.min(50, Number(changeEvent.target.value))))} /><b>人</b></span></label>
 
             <p className="settings-hint">日程を短くした場合、範囲外になった支出の日付は「未指定」に戻ります。</p>
-            <button type="submit" className="button button--primary">変更を保存</button>
+            <button type="submit" className="button button--primary" disabled={busy}>変更を保存</button>
           </form>
 
           <section className="settings-card participant-management" aria-labelledby="participant-management-heading">
@@ -128,18 +254,15 @@ export function EventSettingsView({
                   <article key={member.id}>
                     <span className="settings-member-name" style={memberPillStyle(index)}>{member.name}</span>
                     <small>{member.isOrganizer ? '幹事' : isReferenced ? '支出に登録済み' : '幹事が代理登録'}</small>
-                    {!member.isOrganizer && <button type="button" disabled={cannotRemove} title={isReferenced ? '支出に関係する参加者は削除できません' : undefined} onClick={() => {
-                      onRemoveMember(member.id)
-                      setMessage(`${member.name}さんを参加者から削除しました。`)
-                    }}>削除</button>}
+                    {!member.isOrganizer && <button type="button" disabled={cannotRemove || busy} title={isReferenced ? '支出に関係する参加者は削除できません' : undefined} onClick={() => void removeMember(member)}>削除</button>}
                   </article>
                 )
               })}
             </div>
 
             <form className="proxy-member-form" onSubmit={addMember}>
-              <label className="field"><span className="field__label">幹事が代わりに参加登録</span><input placeholder="参加者の名前" value={newMemberName} disabled={event.status === 'finalized'} onChange={(changeEvent) => setNewMemberName(changeEvent.target.value)} /></label>
-              <button type="submit" className="button button--outline" disabled={event.status === 'finalized' || members.length >= 50}>参加者を追加</button>
+              <label className="field"><span className="field__label">幹事が代わりに参加登録</span><input placeholder="参加者の名前" value={newMemberName} aria-invalid={message.includes('予約されています')} disabled={event.status === 'finalized'} onChange={(changeEvent) => setNewMemberName(changeEvent.target.value)} /></label>
+              <button type="submit" className="button button--outline" disabled={busy || event.status === 'finalized' || members.length >= 50}>参加者を追加</button>
             </form>
 
             <div className="claim-link-placeholder">
@@ -148,6 +271,98 @@ export function EventSettingsView({
             </div>
           </section>
         </div>
+
+        {onRegenerateShareToken && (
+          <section className="settings-card share-link-security-card" aria-labelledby="share-link-security-heading">
+            <div className="settings-card__heading">
+              <span aria-hidden="true">鍵</span>
+              <div><h3 id="share-link-security-heading">共有URLのセキュリティ</h3><p>URLが意図しない相手へ渡った場合に再発行できます</p></div>
+            </div>
+            <p>再発行すると現在の共有URLは直ちに無効になります。参加者は新しいURLを開き直す必要があります。</p>
+            {confirmingShareTokenRotation ? (
+              <div className="share-link-security-card__confirmation" role="alert">
+                <strong>現在のURLを無効にしますか？</strong>
+                <div>
+                  <button type="button" className="button button--danger" disabled={busy} onClick={() => void regenerateShareToken()}>{busy ? '再発行中…' : '無効にして再発行'}</button>
+                  <button type="button" className="button button--secondary" disabled={busy} onClick={() => setConfirmingShareTokenRotation(false)}>キャンセル</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" className="button button--outline" disabled={busy} onClick={() => setConfirmingShareTokenRotation(true)}>共有URLを再発行</button>
+            )}
+          </section>
+        )}
+
+        {onSaveNotificationIntegration && (
+          <section className="settings-card notification-settings-card" aria-labelledby="notification-settings-heading">
+            <div className="settings-card__heading">
+              <span aria-hidden="true">通</span>
+              <div><h3 id="notification-settings-heading">通知設定</h3><p>DiscordまたはLINEへイベント通知を送ります</p></div>
+            </div>
+            <p className="notification-settings-card__security">DiscordのWebhook URLは暗号化して保存し、保存後は画面へ再表示しません。</p>
+            <div className="notification-provider-grid">
+              {([
+                {
+                  provider: 'discord' as const,
+                  title: 'Discord',
+                  description: 'サーバーのWebhook URLを登録します。',
+                  label: 'Discord Webhook URL',
+                  placeholder: 'https://discord.com/api/webhooks/…',
+                  value: discordWebhookUrl,
+                  onChange: setDiscordWebhookUrl,
+                },
+                {
+                  provider: 'line' as const,
+                  title: 'LINE',
+                  description: 'Messaging APIのUser／Group／Room IDを登録します。',
+                  label: 'LINEの送信先ID',
+                  placeholder: 'U… / C… / R…',
+                  value: lineDestination,
+                  onChange: setLineDestination,
+                },
+              ]).map((item) => {
+                const connected = integrations.find((integration) => integration.provider === item.provider)
+                return (
+                  <article key={item.provider} className="notification-provider-card">
+                    <header><div><h4>{item.title}</h4><p>{item.description}</p></div>{connected && <span>接続済み</span>}</header>
+                    {connected && <p className="notification-provider-card__destination">{connected.externalSpaceName}</p>}
+                    <label className="field">
+                      <span className="field__label">{connected ? `${item.label}を変更` : item.label}</span>
+                      <input
+                        type={item.provider === 'discord' ? 'url' : 'text'}
+                        value={item.value}
+                        placeholder={item.placeholder}
+                        autoComplete="off"
+                        onChange={(event) => item.onChange(event.target.value)}
+                      />
+                    </label>
+                    <div className="notification-provider-card__actions">
+                      <button type="button" className="button button--outline" disabled={integrationBusy !== null} onClick={() => void saveIntegration(item.provider)}>
+                        {integrationBusy === item.provider ? '保存中…' : connected ? '接続先を変更' : '保存'}
+                      </button>
+                      {connected && (
+                        <>
+                          <button type="button" className="button button--secondary" disabled={integrationBusy !== null} onClick={() => setTestPrompt(connected)}>テスト通知</button>
+                          <button type="button" className="text-button" disabled={integrationBusy !== null} onClick={() => void deleteIntegration(item.provider)}>連携を削除</button>
+                        </>
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+            {testPrompt && (
+              <div className="notification-test-confirmation" role="alert">
+                <strong>{testPrompt.provider === 'discord' ? 'Discord' : 'LINE'}へテスト通知を送信しますか？</strong>
+                <p>通知ジョブをキューへ追加します。Dispatcherが設定済みの場合は登録先へ届きます。</p>
+                <div>
+                  <button type="button" className="button button--primary" disabled={integrationBusy !== null} onClick={() => void queueTestNotification()}>送信キューへ追加</button>
+                  <button type="button" className="button button--secondary" disabled={integrationBusy !== null} onClick={() => setTestPrompt(null)}>キャンセル</button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="settings-card event-delete-card" aria-labelledby="event-delete-heading">
           <div className="settings-card__heading">

@@ -6,3 +6,12 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Local Netlify folder
+.netlify
+
+# Browser test artifacts
+test-results/
+playwright-report/
+lighthouse-results.json
+mobile-home.png

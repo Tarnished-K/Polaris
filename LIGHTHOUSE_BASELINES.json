@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "profiles": {
+    "desktop": {
+      "performanceScore": 1,
+      "fcpMs": 404.97,
+      "lcpMs": 462.97,
+      "cls": 0,
+      "jsTransferBytes": 138280,
+      "cssTransferBytes": 16686,
+      "jsonTransferBytes": 0
+    },
+    "mobile": {
+      "performanceScore": 0.97,
+      "fcpMs": 1935.58,
+      "lcpMs": 2085.58,
+      "cls": 0,
+      "jsTransferBytes": 138280,
+      "cssTransferBytes": 16686,
+      "jsonTransferBytes": 0
+    }
+  },
+  "assets": {
+    "initialJsBytes": 486979,
+    "initialCssBytes": 85676,
+    "settingsChunkBytes": 13725,
+    "dashboardChunkBytes": 8263,
+    "settlementChunkBytes": 27718
+  }
+}

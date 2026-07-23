@@ -4,6 +4,7 @@ import type { Member } from '../domain/types'
 import {
   allocatePercentages,
   amountToStrokeWidth,
+  formatCellValue,
   getSettlementRelationshipMapMode,
   layoutAnnotationGrid,
   layoutNearbyAnnotations,
@@ -11,6 +12,14 @@ import {
   memberDisplayName,
   settlementPerspective,
 } from './ui'
+
+describe('formatCellValue', () => {
+  it('正の精算額をコンパクトな円表記にし、空セルは空文字にする', () => {
+    expect(formatCellValue(12_345)).toBe('¥12,345')
+    expect(formatCellValue(0)).toBe('')
+    expect(formatCellValue(Number.NaN)).toBe('')
+  })
+})
 
 describe('allocatePercentages', () => {
   it('最大剰余法で合計を100%にする', () => {

@@ -27,12 +27,14 @@ interface ExpenseFormProps {
   members: Member[]
   currentMemberId: string | null
   initialExpense?: Expense
+  offline?: boolean
   onClose: () => void
-  onSubmit: (input: ExpenseDraftInput) => void
-  onSaveDraft?: (input: ExpenseDraftInput) => void
+  onSubmit: (input: ExpenseDraftInput) => void | Promise<void>
+  onSaveDraft?: (input: ExpenseDraftInput) => void | Promise<void>
+  onDelete?: () => void | Promise<void>
 }
 
-export function ExpenseForm({ event, members, currentMemberId, initialExpense, onClose, onSubmit, onSaveDraft }: ExpenseFormProps) {
+export function ExpenseForm({ event, members, currentMemberId, initialExpense, offline = false, onClose, onSubmit, onSaveDraft, onDelete }: ExpenseFormProps) {
   const initialCategory: CategoryId = initialExpense?.category ?? 'food'
   const [category, setCategory] = useState<CategoryId>(initialCategory)
   const [dayIndex, setDayIndex] = useState<number | undefined>(initialExpense?.dayIndex)
@@ -49,6 +51,8 @@ export function ExpenseForm({ event, members, currentMemberId, initialExpense, o
     ),
   )
   const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const currentMember = members.find((member) => member.id === currentMemberId)
   const canManageAllocation = Boolean(currentMember?.isOrganizer || payerMemberId === currentMemberId)
   const canEditOwnAmount = Boolean(initialExpense?.targetMemberIds.includes(currentMemberId ?? ''))
@@ -126,15 +130,41 @@ export function ExpenseForm({ event, members, currentMemberId, initialExpense, o
     return true
   }
 
-  const submit = (submitEvent: FormEvent) => {
+  const submit = async (submitEvent: FormEvent) => {
     submitEvent.preventDefault()
     if (!validateBase(true)) return
-    onSubmit(buildInput())
+    setSubmitting(true)
+    setError('')
+    try {
+      await onSubmit(buildInput())
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '支出を保存できませんでした。')
+      setSubmitting(false)
+    }
   }
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
     if (!validateBase(false)) return
-    onSaveDraft?.(buildInput())
+    setSubmitting(true)
+    setError('')
+    try {
+      await onSaveDraft?.(buildInput())
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '途中保存できませんでした。')
+      setSubmitting(false)
+    }
+  }
+
+  const deleteExpense = async () => {
+    if (!onDelete) return
+    setSubmitting(true)
+    setError('')
+    try {
+      await onDelete()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '支出を削除できませんでした。')
+      setSubmitting(false)
+    }
   }
 
   const closeFromBackdrop = (mouseEvent: MouseEvent<HTMLDivElement>) => {
@@ -155,7 +185,9 @@ export function ExpenseForm({ event, members, currentMemberId, initialExpense, o
             <p className="eyebrow">{event.title}</p>
             <h1 id="expense-dialog-title">
               {initialExpense
-                ? canManageAllocation ? '暫定支出の内訳を確定' : '自分の負担額を入力'
+                ? initialExpense.status === 'finalized'
+                  ? '支出を編集'
+                  : canManageAllocation ? '暫定支出の内訳を確定' : '自分の負担額を入力'
                 : '支出を追加'}
             </h1>
           </div>
@@ -345,11 +377,23 @@ export function ExpenseForm({ event, members, currentMemberId, initialExpense, o
           )}
 
           {error && <p className="form-error" role="alert">{error}</p>}
+          {offline && <p className="offline-notice" role="status">オフライン中です。新しい支出はこの端末に保存し、オンライン復帰後に自動送信します。</p>}
 
-          <div className="expense-form__actions">
-            <button type="button" className="button button--secondary desktop-only" onClick={onClose}>キャンセル</button>
+          {confirmingDelete && (
+            <div className="expense-delete-confirm" role="alert">
+              <span>この支出を削除しますか？元に戻せません。</span>
+              <button type="button" className="button button--secondary button--small" disabled={submitting} onClick={() => setConfirmingDelete(false)}>戻る</button>
+              <button type="button" className="button button--small text-button--danger" disabled={submitting} onClick={() => void deleteExpense()}>{submitting ? '削除しています…' : '削除する'}</button>
+            </div>
+          )}
+
+          {!confirmingDelete && <div className="expense-form__actions">
+            {initialExpense && onDelete && (
+              <button type="button" className="button button--secondary text-button--danger" disabled={submitting || confirmingDelete} onClick={() => setConfirmingDelete(true)}>削除</button>
+            )}
+            <button type="button" className="button button--secondary desktop-only" disabled={submitting} onClick={onClose}>キャンセル</button>
             {initialExpense && onSaveDraft && (canManageAllocation || canEditOwnAmount) && (
-              <button type="button" className="button button--secondary" onClick={saveDraft}>
+              <button type="button" className="button button--secondary" disabled={submitting} onClick={() => void saveDraft()}>
                 {canManageAllocation ? '途中保存' : '自分の金額を保存'}
               </button>
             )}
@@ -359,22 +403,25 @@ export function ExpenseForm({ event, members, currentMemberId, initialExpense, o
               disabled={
                 !title.trim() ||
                 amount <= 0 ||
+                submitting ||
                 (splitMethod === 'equal' && targetMemberIds.length === 0) ||
                 (Boolean(initialExpense) && (!allocationComplete || !canManageAllocation))
               }
             >
               <span>
                 {initialExpense
-                  ? canManageAllocation ? '内訳を確定する' : '立替え者の確定待ち'
+                  ? initialExpense.status === 'finalized'
+                    ? submitting ? '保存しています…' : '変更を保存'
+                    : canManageAllocation ? submitting ? '保存しています…' : '内訳を確定する' : '立替え者の確定待ち'
                   : splitMethod === 'fixed' && !fixedComplete
-                    ? '暫定として追加'
-                    : '追加する'}
+                    ? submitting ? '追加しています…' : '暫定として追加'
+                    : submitting ? '追加しています…' : '追加する'}
               </span>
               {splitMethod === 'equal' && amount > 0 && (
                 <><span className="button-divider" aria-hidden="true" /><span>1人あたり {formatYen(perPerson)}</span></>
               )}
             </button>
-          </div>
+          </div>}
         </form>
       </section>
     </div>

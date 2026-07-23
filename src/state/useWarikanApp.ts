@@ -31,13 +31,14 @@ export interface NewExpenseInput {
   dayIndex?: number
 }
 
-interface AppState {
+export interface AppState {
   event: WarikanEvent | null
   members: Member[]
   currentMemberId: string | null
   expenses: Expense[]
   settlements: Settlement[]
   view: AppView
+  persistence: 'local' | 'remote'
 }
 
 export interface WarikanAppState {
@@ -61,8 +62,10 @@ export interface WarikanAppState {
   loadDemo: () => void
   loadFourPersonDemo: () => void
   addExpense: (input: NewExpenseInput) => void
+  updateExpense: (expenseId: string, input: NewExpenseInput) => void
   saveDraftExpense: (expenseId: string, input: NewExpenseInput) => void
   finalizeExpense: (expenseId: string, input: NewExpenseInput) => void
+  deleteExpense: (expenseId: string) => void
   finalizeEvent: () => void
   unfinalizeEvent: () => void
   reportSettlement: (id: string) => void
@@ -71,7 +74,7 @@ export interface WarikanAppState {
   resetApp: () => void
 }
 
-const STORAGE_KEY = 'warikan.web.mvp.v1'
+export const LOCAL_STATE_STORAGE_KEY = 'warikan.web.mvp.v1'
 const APP_VIEWS: AppView[] = ['create', 'home', 'expense', 'dashboard', 'settlement', 'payment', 'settings']
 
 function createEmptyState(): AppState {
@@ -82,6 +85,7 @@ function createEmptyState(): AppState {
     expenses: [],
     settlements: [],
     view: 'create',
+    persistence: 'local',
   }
 }
 
@@ -89,15 +93,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function readStoredState(): AppState {
-  if (typeof window === 'undefined') return createEmptyState()
+type StateStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+
+export function readStoredState(
+  storage: StateStorage | null = typeof window === 'undefined' ? null : window.localStorage,
+): AppState {
+  if (!storage) return createEmptyState()
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw = storage.getItem(LOCAL_STATE_STORAGE_KEY)
     if (!raw) return createEmptyState()
 
     const parsed: unknown = JSON.parse(raw)
     if (!isRecord(parsed)) return createEmptyState()
+    if (parsed.persistence === 'remote') return createEmptyState()
 
     const { event, members, currentMemberId, expenses, settlements, view } = parsed
     const validEvent = event === null || isRecord(event)
@@ -128,6 +137,13 @@ function readStoredState(): AppState {
         !Array.isArray(settlement.offsets),
     )
     const normalizedEvent = event as unknown as WarikanEvent | null
+    const isLegacyLocalState =
+      parsed.persistence === undefined &&
+      normalizedEvent !== null &&
+      /^[0-9a-f]{36}$/.test(normalizedEvent.shareToken)
+    if (parsed.persistence !== 'local' && !isLegacyLocalState) {
+      return createEmptyState()
+    }
 
     return {
       event:
@@ -139,9 +155,18 @@ function readStoredState(): AppState {
       expenses: normalizedExpenses,
       settlements: hasLegacySettlements ? [] : storedSettlements,
       view: view as AppView,
+      persistence: 'local',
     }
   } catch {
     return createEmptyState()
+  }
+}
+
+export function persistStoredState(storage: StateStorage, state: AppState): void {
+  if (state.event === null || state.persistence !== 'local') {
+    storage.removeItem(LOCAL_STATE_STORAGE_KEY)
+  } else {
+    storage.setItem(LOCAL_STATE_STORAGE_KEY, JSON.stringify(state))
   }
 }
 
@@ -239,11 +264,7 @@ export function useWarikanApp(): WarikanAppState {
     if (typeof window === 'undefined') return
 
     try {
-      if (state.event === null) {
-        window.localStorage.removeItem(STORAGE_KEY)
-      } else {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-      }
+      persistStoredState(window.localStorage, state)
     } catch {
       // The app remains usable in private browsing or when storage is full.
     }
@@ -315,6 +336,7 @@ export function useWarikanApp(): WarikanAppState {
       expenses: remote.expenses,
       settlements: remote.settlements,
       view: 'home',
+      persistence: 'remote',
     })
   }, [])
 
@@ -340,6 +362,7 @@ export function useWarikanApp(): WarikanAppState {
       expenses: [],
       settlements: [],
       view: 'home',
+      persistence: 'local',
     })
   }, [])
 
@@ -411,6 +434,7 @@ export function useWarikanApp(): WarikanAppState {
       ...demo,
       settlements: [],
       view: 'home',
+      persistence: 'local',
     })
   }, [])
 
@@ -420,6 +444,7 @@ export function useWarikanApp(): WarikanAppState {
       ...demo,
       settlements: [],
       view: 'home',
+      persistence: 'local',
     })
   }, [])
 
@@ -469,6 +494,58 @@ export function useWarikanApp(): WarikanAppState {
       return {
         ...current,
         expenses: [...current.expenses, expense],
+        view: 'home',
+      }
+    })
+  }, [])
+
+  const updateExpense = useCallback((expenseId: string, input: NewExpenseInput) => {
+    setState((current) => {
+      if (!current.event || current.event.status !== 'active' || !current.currentMemberId) return current
+      const existing = current.expenses.find((expense) => expense.id === expenseId)
+      if (!existing) return current
+      const organizer = isOrganizer(current)
+      if (!organizer && existing.payerMemberId !== current.currentMemberId) return current
+      if (!organizer && input.payerMemberId !== existing.payerMemberId) {
+        throw new Error('立替え者は変更できません')
+      }
+
+      validateExpenseInput(input, current.event, current.members)
+      if (!isCompleteAllocation(input)) {
+        throw new Error('対象者全員の負担額を入力し、合計を支出額に合わせてください')
+      }
+
+      const updated: Expense = {
+        ...existing,
+        category: input.category,
+        title: input.title.trim(),
+        amount: input.amount,
+        payerMemberId: input.payerMemberId,
+        targetMemberIds: [...input.targetMemberIds],
+        splitMethod: input.splitMethod,
+        fixedAmounts: input.splitMethod === 'fixed' && input.fixedAmounts
+          ? { ...input.fixedAmounts }
+          : undefined,
+        dayIndex: input.dayIndex,
+        status: 'finalized',
+      }
+      splitExpense(updated)
+      return {
+        ...current,
+        expenses: current.expenses.map((expense) => expense.id === expenseId ? updated : expense),
+        view: 'home',
+      }
+    })
+  }, [])
+
+  const deleteExpense = useCallback((expenseId: string) => {
+    setState((current) => {
+      if (!current.event || current.event.status !== 'active' || !current.currentMemberId) return current
+      const existing = current.expenses.find((expense) => expense.id === expenseId)
+      if (!existing || (!isOrganizer(current) && existing.payerMemberId !== current.currentMemberId)) return current
+      return {
+        ...current,
+        expenses: current.expenses.filter((expense) => expense.id !== expenseId),
         view: 'home',
       }
     })
@@ -740,8 +817,10 @@ export function useWarikanApp(): WarikanAppState {
     loadDemo,
     loadFourPersonDemo,
     addExpense,
+    updateExpense,
     saveDraftExpense,
     finalizeExpense,
+    deleteExpense,
     finalizeEvent,
     unfinalizeEvent,
     reportSettlement,

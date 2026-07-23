@@ -9,6 +9,9 @@ import type {
 } from '../domain/types'
 import { CATEGORY_META } from '../domain/types'
 import { EventHeader } from './EventHeader'
+import { OrganizerControls } from './OrganizerControls'
+import { SettlementMatrixView } from './SettlementMatrixView'
+import type { UnfinalizeEventResult } from '../backend/types'
 import {
   amountToStrokeWidth,
   formatYen,
@@ -34,6 +37,11 @@ interface SettlementViewProps {
   onOpenSettlements: () => void
   onOpenPayment: () => void
   onOpenSettings: () => void
+  onFinalize: () => void | Promise<void>
+  onUnfinalize: (force?: boolean) => void | UnfinalizeEventResult | Promise<void | UnfinalizeEventResult>
+  onReportSettlement: (settlementId: string) => void | Promise<void>
+  onConfirmSettlement: (settlementId: string) => void | Promise<void>
+  onRevertSettlement: (settlementId: string) => void | Promise<void>
 }
 
 const RELATIONSHIP_MAP_WIDTH = 680
@@ -847,6 +855,56 @@ function comparisonTitle({
   return `${memberDisplayName(members, settlement.fromMemberId, currentMemberId)}と${memberDisplayName(members, settlement.toMemberId, currentMemberId)}の比較`
 }
 
+function SettlementStatusActions({
+  settlement,
+  currentMemberId,
+  organizer,
+  onReport,
+  onConfirm,
+  onRevert,
+}: {
+  settlement: Settlement
+  currentMemberId: string | null
+  organizer: boolean
+  onReport: () => void | Promise<void>
+  onConfirm: () => void | Promise<void>
+  onRevert: () => void | Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const canReport = settlement.status === 'pending' && (organizer || settlement.fromMemberId === currentMemberId)
+  const canConfirm = settlement.status === 'reported' && (organizer || settlement.toMemberId === currentMemberId)
+  const canRevert = organizer || (
+    settlement.status === 'reported'
+      ? settlement.reportedByMemberId === currentMemberId
+      : settlement.status === 'paid' && settlement.confirmedByMemberId === currentMemberId
+  )
+  if (!canReport && !canConfirm && !canRevert) return null
+
+  const run = async (action: () => void | Promise<void>) => {
+    setBusy(true)
+    setError('')
+    try {
+      await action()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '精算状態を更新できませんでした。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="settlement-status-actions">
+      {error && <p className="form-error" role="alert">{error}</p>}
+      <div>
+        {canReport && <button type="button" className="button button--outline button--small" disabled={busy} onClick={() => void run(onReport)}>{busy ? '更新中…' : '支払い完了を報告'}</button>}
+        {canConfirm && <button type="button" className="button button--success button--small" disabled={busy} onClick={() => void run(onConfirm)}>{busy ? '更新中…' : '受け取りを確認'}</button>}
+        {canRevert && settlement.status !== 'pending' && <button type="button" className="text-button" disabled={busy} onClick={() => void run(onRevert)}>1段階戻す</button>}
+      </div>
+    </div>
+  )
+}
+
 export function SettlementView({
   event,
   members,
@@ -860,11 +918,17 @@ export function SettlementView({
   onOpenSettlements,
   onOpenPayment,
   onOpenSettings,
+  onFinalize,
+  onUnfinalize,
+  onReportSettlement,
+  onConfirmSettlement,
+  onRevertSettlement,
 }: SettlementViewProps) {
   const currentMember = members.find((member) => member.id === currentMemberId)
   const organizer = Boolean(currentMember?.isOrganizer)
   const finalized = event.status === 'finalized'
   const [selectedSettlementId, setSelectedSettlementId] = useState<string | null>(null)
+  const [overviewMode, setOverviewMode] = useState<'map' | 'matrix'>('map')
   const visibleSettlements = useMemo(
     () =>
       organizer
@@ -925,6 +989,20 @@ export function SettlementView({
               <><strong>まだ暫定の精算です。</strong>相手ごとにまとめ、反対方向の立て替えを差し引いています。</>
             )}
           </p>
+        </div>
+      )}
+
+      {organizer && (
+        <div className="settlement-organizer-controls">
+          <OrganizerControls
+            event={event}
+            members={members}
+            expenseCount={expenses.length}
+            draftExpenseCount={draftExpenseCount}
+            totalSpent={expenses.reduce((sum, expense) => sum + expense.amount, 0)}
+            onFinalize={onFinalize}
+            onUnfinalize={onUnfinalize}
+          />
         </div>
       )}
 
@@ -989,6 +1067,16 @@ export function SettlementView({
                             </div>
                           </div>
                         </details>
+                        {finalized && (
+                          <SettlementStatusActions
+                            settlement={settlement}
+                            currentMemberId={currentMemberId}
+                            organizer={organizer}
+                            onReport={() => onReportSettlement(settlement.id)}
+                            onConfirm={() => onConfirmSettlement(settlement.id)}
+                            onRevert={() => onRevertSettlement(settlement.id)}
+                          />
+                        )}
                       </article>
                       )
                     })
@@ -996,14 +1084,30 @@ export function SettlementView({
                 </div>
               </section>
 
-              <SettlementRelationshipMap
-                settlements={visibleSettlements}
-                members={members}
-                currentMemberId={currentMemberId}
-                organizer={organizer}
-                selectedSettlementId={selectedSettlementId}
-                onSelectSettlement={setSelectedSettlementId}
-              />
+              <div className="settlement-overview">
+                <div className="settlement-overview__tabs" role="tablist" aria-label="精算の全体表示">
+                  <button type="button" role="tab" aria-selected={overviewMode === 'map'} className={overviewMode === 'map' ? 'is-active' : ''} onClick={() => setOverviewMode('map')}>関係マップ</button>
+                  <button type="button" role="tab" aria-selected={overviewMode === 'matrix'} className={overviewMode === 'matrix' ? 'is-active' : ''} onClick={() => setOverviewMode('matrix')}>金額表</button>
+                </div>
+                {overviewMode === 'map' ? (
+                  <SettlementRelationshipMap
+                    settlements={visibleSettlements}
+                    members={members}
+                    currentMemberId={currentMemberId}
+                    organizer={organizer}
+                    selectedSettlementId={selectedSettlementId}
+                    onSelectSettlement={setSelectedSettlementId}
+                  />
+                ) : (
+                  <SettlementMatrixView
+                    settlements={visibleSettlements}
+                    members={members}
+                    currentMemberId={currentMemberId}
+                    selectedSettlementId={selectedSettlementId}
+                    onSelectSettlement={setSelectedSettlementId}
+                  />
+                )}
+              </div>
             </div>
           </section>
         </div>

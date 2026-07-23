@@ -8,6 +8,11 @@ export const formatYen = (amount: number) =>
     maximumFractionDigits: 0,
   }).format(Number.isFinite(amount) ? amount : 0)
 
+export const formatCellValue = (amount: number) =>
+  Number.isFinite(amount) && amount > 0
+    ? `¥${Math.round(amount).toLocaleString('ja-JP')}`
+    : ''
+
 /** Distributes whole percentages with the largest-remainder method. */
 export const allocatePercentages = (amounts: number[]) => {
   const normalized = amounts.map((amount) => Number.isFinite(amount) && amount > 0 ? amount : 0)

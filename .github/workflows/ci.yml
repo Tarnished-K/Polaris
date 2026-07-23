@@ -38,6 +38,33 @@ jobs:
       - name: Build production assets
         run: npm run build
 
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser smoke tests
+        run: npm run test:e2e
+
+      - name: Check Lighthouse and asset-size budgets
+        run: npm run audit:lighthouse
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload Lighthouse result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-result
+          path: lighthouse-results.json
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Validate database migrations and core flow
         run: npm run backend:validate
 

@@ -17,7 +17,8 @@ try {
       as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     create function extensions.digest(bytea, text) returns bytea language sql immutable as $$ select $1 $$;
     create function extensions.gen_random_bytes(integer) returns bytea language sql volatile
-      as $$ select decode(repeat('ab', $1), 'hex') $$;
+      as $$ select decode(string_agg(lpad(to_hex(floor(random() * 256)::integer), 2, '0'), ''), 'hex')
+            from generate_series(1, $1) $$;
     create role anon;
     create role authenticated;
     create role service_role;
@@ -167,6 +168,43 @@ try {
   const stateResult = await database.query('select public.get_event_state($1) as state', [shareToken])
   assert.equal(stateResult.rows[0].state.members.length, 4)
   assert.equal(stateResult.rows[0].state.expenses.length, 3)
+
+  const organizerMember = await database.query(
+    'select id from public.members where event_id = $1::uuid and is_organizer',
+    [eventId],
+  )
+  const organizerState = await database.query(
+    'select public.get_event_state($1, null) as state',
+    [shareToken],
+  )
+  assert.equal(organizerState.rows[0].state.currentMemberId, organizerMember.rows[0].id)
+
+  await database.query("select set_config('request.jwt.claim.sub', '', false)")
+  const participantState = await database.query(
+    'select public.get_event_state($1, $2) as state',
+    [shareToken, deviceToken],
+  )
+  assert.equal(participantState.rows[0].state.currentMemberId, payer.id)
+  const visitorState = await database.query(
+    'select public.get_event_state($1, $2) as state',
+    [shareToken, 'unknown-device-token-that-is-at-least-thirty-two-characters'],
+  )
+  assert.equal(visitorState.rows[0].state.currentMemberId, null)
+
+  await database.query("select set_config('request.jwt.claim.sub', $1, false)", [organizerId])
+  const rotatedState = await database.query(
+    'select public.organizer_regenerate_share_token($1::uuid) as state',
+    [eventId],
+  )
+  const rotatedShareToken = rotatedState.rows[0].state.event.shareToken
+  assert.notEqual(rotatedShareToken, shareToken)
+  assert.equal(rotatedShareToken.length, 43)
+  await assert.rejects(
+    database.query('select public.get_event_state($1)', [shareToken]),
+    /EVENT_NOT_FOUND/,
+  )
+  const currentState = await database.query('select public.get_event_state($1) as state', [rotatedShareToken])
+  assert.equal(currentState.rows[0].state.event.id, eventId)
 
   console.log(`Validated ${migrations.length} migrations and the core backend flow.`)
 } finally {
