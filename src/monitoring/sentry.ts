@@ -1,10 +1,12 @@
-import * as Sentry from '@sentry/react'
 import type { ErrorEvent, EventHint } from '@sentry/react'
 
 const sensitiveKey = /(?:name|member|participant|token|secret|password|authorization|cookie|webhook|destination|externalSpace)/i
-type SentryInitOptions = Parameters<typeof Sentry.init>[0]
+type SentryModule = typeof import('@sentry/react')
+type SentryInitOptions = Parameters<SentryModule['init']>[0]
 type BeforeSendTransaction = NonNullable<SentryInitOptions['beforeSendTransaction']>
 type TransactionEvent = Parameters<BeforeSendTransaction>[0]
+let sentryModulePromise: Promise<SentryModule> | undefined
+let earlyListenersAttached = false
 
 export function redactSensitiveText(value: string): string {
   return value
@@ -32,18 +34,94 @@ export function scrubSentryTransaction(event: TransactionEvent): TransactionEven
   return scrub(event) as TransactionEvent
 }
 
-export function initializeErrorMonitoring(): boolean {
+function detachEarlyErrorListeners(): void {
+  if (!earlyListenersAttached || typeof window === 'undefined') return
+  window.removeEventListener('error', captureEarlyError)
+  window.removeEventListener('unhandledrejection', captureEarlyRejection)
+  earlyListenersAttached = false
+}
+
+function loadSentry(): Promise<SentryModule> | undefined {
   const dsn = import.meta.env.VITE_SENTRY_DSN?.trim()
-  if (!dsn) return false
-  Sentry.init({
-    dsn,
-    environment: import.meta.env.MODE,
-    sendDefaultPii: false,
-    tracesSampleRate: 0.1,
-    beforeSend: scrubSentryEvent,
-    beforeSendTransaction: scrubSentryTransaction,
-  })
+  if (!dsn) return undefined
+  if (sentryModulePromise) return sentryModulePromise
+
+  sentryModulePromise = import('@sentry/react')
+    .then((Sentry) => {
+      detachEarlyErrorListeners()
+      Sentry.init({
+        dsn,
+        environment: import.meta.env.MODE,
+        sendDefaultPii: false,
+        dataCollection: {
+          userInfo: false,
+          httpBodies: [],
+        },
+        integrations: [
+          Sentry.browserTracingIntegration(),
+        ],
+        tracesSampleRate: 0.1,
+        tracePropagationTargets: [
+          'localhost',
+          /^https:\/\/polaris-warikan\.netlify\.app(?:\/|$)/,
+        ],
+        beforeSend: scrubSentryEvent,
+        beforeSendTransaction: scrubSentryTransaction,
+      })
+      return Sentry
+    })
+    .catch((error) => {
+      sentryModulePromise = undefined
+      throw error
+    })
+  return sentryModulePromise
+}
+
+function captureEarlyError(event: globalThis.ErrorEvent): void {
+  void captureMonitoringException(event.error ?? new Error(event.message))
+}
+
+function captureEarlyRejection(event: PromiseRejectionEvent): void {
+  void captureMonitoringException(event.reason)
+}
+
+export function captureMonitoringException(error: unknown, extra?: Record<string, unknown>): void {
+  const loading = loadSentry()
+  if (!loading) return
+  void loading
+    .then((Sentry) => {
+      Sentry.captureException(error, extra ? { extra } : undefined)
+    })
+    .catch(() => {
+      // Monitoring must never create a second unhandled rejection.
+    })
+}
+
+export function initializeErrorMonitoring(): boolean {
+  if (!import.meta.env.VITE_SENTRY_DSN?.trim()) return false
+  if (typeof window !== 'undefined' && !earlyListenersAttached) {
+    window.addEventListener('error', captureEarlyError)
+    window.addEventListener('unhandledrejection', captureEarlyRejection)
+    earlyListenersAttached = true
+  }
   return true
 }
 
-export { Sentry }
+export function scheduleBrowserTracing(): boolean {
+  if (!import.meta.env.VITE_SENTRY_DSN?.trim() || typeof window === 'undefined') return false
+
+  let timeoutId: number | undefined
+  const enable = () => {
+    window.removeEventListener('pointerdown', enable, true)
+    window.removeEventListener('keydown', enable, true)
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId)
+    void loadSentry()?.catch(() => {
+      // A future error can retry loading the monitoring SDK.
+    })
+  }
+
+  window.addEventListener('pointerdown', enable, { capture: true, once: true, passive: true })
+  window.addEventListener('keydown', enable, { capture: true, once: true })
+  timeoutId = window.setTimeout(enable, 12_000)
+  return true
+}

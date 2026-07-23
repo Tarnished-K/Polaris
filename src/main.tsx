@@ -1,15 +1,17 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
-import { initializeErrorMonitoring, Sentry } from './monitoring/sentry'
+import { MonitoringErrorBoundary } from './monitoring/MonitoringErrorBoundary'
+import { initializeErrorMonitoring, scheduleBrowserTracing } from './monitoring/sentry'
 import './styles.css'
 
 initializeErrorMonitoring()
+scheduleBrowserTracing()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Sentry.ErrorBoundary fallback={<main className="app-loading" role="alert">予期しないエラーが発生しました。ページを再読み込みしてください。</main>}>
+    <MonitoringErrorBoundary>
       <App />
-    </Sentry.ErrorBoundary>
+    </MonitoringErrorBoundary>
   </StrictMode>,
 )

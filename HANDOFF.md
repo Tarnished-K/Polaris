@@ -5,26 +5,33 @@
 ## 最終ステータス（2026-07-23）
 
 - フェーズ0〜2、4〜6は実装・自動検証・必要な本番反映まで完了。フェーズ3は本番URL／OAuth／クラウドイベント／Realtime／PWA配信まで確認済みで、異なる物理端末からのホーム画面追加を含む最終受け入れだけが残る。
-- フェーズ7はオフライン再送、Sentry基盤、共有URLローテーションまで実装済み。実スマートフォンのオフライン→オンライン復帰と、実Sentry DSNでのイベント到達は外部環境依存の最終受け入れとして残る。
+- フェーズ7はオフライン再送、Sentry本番受け入れ、共有URLローテーションまで実装済み。残る最終受け入れは実スマートフォンのオフライン→オンライン復帰。
 - バックログ6.1（関係マップ）、6.2（債務マトリクス）、6.3（予約語バリデーション）は実装済み。
 - 通知は暗号化されたDiscord／LINE登録UI、outbox、dispatcherまで本番反映済み。実WebhookとLINE channel access tokenを使う外部配送だけ未確認。
 - フェーズ8「支払い・受け取りアクションハブ」は実装・自動検証・クラウドDB反映まで完了した。支払い画面はPayPay ID・外部生成の請求リンク・現金に対応し、銀行口座とアプリ内決済は扱わない。
 - フェーズ9は精算ライフサイクル通知、未払いだけへの1日1回の催促、読み取り専用集計、5分・1回限りの外部アカウント紐付け、LINE HMAC／Discord Ed25519署名検証、リプレイ／レート制限、紐付け済み本人の支払い報告・受取確認まで実装・クラウド反映した。外部IDの平文や個人名をURLへ保存しない。
-- 最終ローカル自動検証はVitest 111件、Playwright 20件、PGlite 10マイグレーション、Production buildが成功。Lighthouseの直近値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a61f34636b0e4e5c55a8360`。
+- 最終ローカル自動検証はVitest 112件、Playwright 20件、PGlite 10マイグレーション、Production buildが成功。Lighthouseの直近値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a620c8488d5e7867e7ba54c`。
 - フェーズ8・9の統合チェックポイント`c02a743`までGitHub `main`へpush済み。GitHub Actions `Validate application` run `30001049555`でunit、build、Playwright、Lighthouse、artifact upload、backend validateが全成功した。
 - 実機接続を試みたが、この実行環境のADBブリッジは接続拒否（OS error 10061）、BrowserMCPは`Transport closed`のため、物理端末テストを完了扱いにはしていない。下記「フェーズ3実機依存確認」の手順で端末接続可能時に実施する。
 
 ### 運用受け入れ残件
 
 1. 異なる物理端末で共有URLを開き、PWAホーム画面追加と、オフライン支出→オンライン復帰→別端末Realtime反映を確認する。
-2. SentryプロジェクトのDSNをNetlify環境変数`VITE_SENTRY_DSN`へ設定して再ビルドし、参加者名・共有tokenがマスクされた実イベントの到達を確認する。DSNを`.env.production`やリポジトリへ保存しない。
-3. DiscordテストWebhookを設定画面から登録し、LINEはSupabase Function secret`LINE_CHANNEL_ACCESS_TOKEN`と送信先IDを設定して、dispatcherの実配送・delivery記録を確認する。
-4. DB直結元を固定IPへ集約できる運用になった時点で、Supabase Network Restrictionsを`0.0.0.0/0`／`::/0`から必要なCIDRだけへ狭める。HTTPS APIにはこの制限が適用されないため、BOT受信は現在の署名・リプレイ防止・外部ID単位レート制限を維持する。
+2. DiscordテストWebhookを設定画面から登録し、LINEはSupabase Function secret`LINE_CHANNEL_ACCESS_TOKEN`と送信先IDを設定して、dispatcherの実配送・delivery記録を確認する。
+3. DB直結元を固定IPへ集約できる運用になった時点で、Supabase Network Restrictionsを`0.0.0.0/0`／`::/0`から必要なCIDRだけへ狭める。HTTPS APIにはこの制限が適用されないため、BOT受信は現在の署名・リプレイ防止・外部ID単位レート制限を維持する。
 
 ### 外部環境依存の残件
 
 1. LINE Messaging APIとDiscord Applicationの本番資格情報をSupabase secretsへ登録し、実アカウントで署名付きWebhookをE2E確認する。
-2. 実スマートフォン、実Sentry DSN、実通知先、Supabase WAF／Rate Limitingの運用受け入れを上記手順で実施する。
+2. 実スマートフォン、実通知先、Supabase WAF／Rate Limitingの運用受け入れを上記手順で実施する。
+
+## 2026-07-23 Sentry本番受け入れ
+
+- EUリージョンの実DSNをNetlify production環境変数`VITE_SENTRY_DSN`へ登録した。値はコード、文書、`.env.production`へ保存していない。
+- Error MonitoringとTracingだけを有効化し、Logs、Session Replay、Application Metricsは無効のままとした。Tracingは10%サンプリングで、エラーとtransactionの両方に同じ再帰的スクラビングを適用する。
+- `sendDefaultPii=false`、`dataCollection.userInfo=false`、`httpBodies=[]`を設定した。共有URL token、claim、device token、参加者名、Authorization/Cookie、通知先secretを送信前にマスクする。
+- Sentry SDKとTracingは初回操作または12秒後に遅延ロードし、それ以前の実行時エラーは軽量listenerと独自Error Boundaryから即時ロードして送信する。SDKチャンクはPWA precacheから除外し、Lighthouse Desktop 1.00／Mobile 0.97と初期JS予算を維持した。
+- 本番URLで制御した実行時エラーを発生させ、Sentry ingestが2xxで受理したことと、テスト用共有token・claim・device tokenが送信envelopeに含まれないことをPlaywrightで確認した。本番Deployは`6a620c8488d5e7867e7ba54c`。
 
 ## 2026-07-23 フェーズ8・9 クラウド統合
 
@@ -492,7 +499,7 @@ Playwrightを導入し、`npm run test:e2e`でDesktop Chrome / Pixel 5相当の4
 
 Playwrightはlist＋HTML reporterを使い、CIで`playwright-report`を常にartifact保存（7日）する。失敗時も画面・traceを確認できる。
 
-フェーズ7のエラー監視基盤として`@sentry/react`を追加。`VITE_SENTRY_DSN`未設定時は初期化せず、設定時も共有URL token・claim・device token・参加者名・認証情報を`beforeSend`でマスクする。Sentry Error Boundaryのフォールバックも追加。実DSNはコードや文書へ保存しない。
+フェーズ7のエラー監視基盤として`@sentry/react`を追加。`VITE_SENTRY_DSN`未設定時は初期化せず、設定時も共有URL token・claim・device token・参加者名・認証情報をエラーとtransactionの送信前にマスクする。独自Error Boundaryはエラー発生時に遅延SDKを即時ロードする。実DSNはコードや文書へ保存しない。
 
 オフライン新規支出は`warikan.web.pending-expenses.v1`へイベント別に保存し、device tokenはキューへ含めない。オンライン復帰時に登録順で送信し、成功した項目だけキューから除去してBroadcastと状態再取得を行う。既存支出の編集・削除は競合を避けるためオフラインでは実行しない。キュー永続化はユニットテスト済み、実機復帰E2Eは残件。
 

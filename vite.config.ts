@@ -12,6 +12,11 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['warikan-icon.svg'],
+        workbox: {
+          // Sentry is intentionally loaded after first paint; precaching it
+          // would download the monitoring SDK during the initial visit.
+          globIgnores: ['**/esm-*.js'],
+        },
         manifest: {
           name: 'Warikan',
           short_name: 'Warikan',
