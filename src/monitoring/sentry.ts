@@ -2,6 +2,9 @@ import * as Sentry from '@sentry/react'
 import type { ErrorEvent, EventHint } from '@sentry/react'
 
 const sensitiveKey = /(?:name|member|participant|token|secret|password|authorization|cookie|webhook|destination|externalSpace)/i
+type SentryInitOptions = Parameters<typeof Sentry.init>[0]
+type BeforeSendTransaction = NonNullable<SentryInitOptions['beforeSendTransaction']>
+type TransactionEvent = Parameters<BeforeSendTransaction>[0]
 
 export function redactSensitiveText(value: string): string {
   return value
@@ -25,6 +28,10 @@ export function scrubSentryEvent(event: ErrorEvent, _hint?: EventHint): ErrorEve
   return scrub(event) as ErrorEvent
 }
 
+export function scrubSentryTransaction(event: TransactionEvent): TransactionEvent {
+  return scrub(event) as TransactionEvent
+}
+
 export function initializeErrorMonitoring(): boolean {
   const dsn = import.meta.env.VITE_SENTRY_DSN?.trim()
   if (!dsn) return false
@@ -33,7 +40,8 @@ export function initializeErrorMonitoring(): boolean {
     environment: import.meta.env.MODE,
     sendDefaultPii: false,
     tracesSampleRate: 0.1,
-    beforeSend: scrubSentryEvent
+    beforeSend: scrubSentryEvent,
+    beforeSendTransaction: scrubSentryTransaction,
   })
   return true
 }

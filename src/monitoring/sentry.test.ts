@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { redactSensitiveText, scrubSentryEvent } from './sentry'
+import { redactSensitiveText, scrubSentryEvent, scrubSentryTransaction } from './sentry'
 
 describe('Sentry privacy scrubbing', () => {
   it('redacts shared routes, claim values, and bearer credentials', () => {
@@ -25,5 +25,22 @@ describe('Sentry privacy scrubbing', () => {
     } as unknown as Parameters<typeof scrubSentryEvent>[0])
     expect(scrubbed.message).toBe('failed at /e/[REDACTED]')
     expect(scrubbed.extra).toEqual({ participantName: '[REDACTED]', nested: { deviceToken: '[REDACTED]', safe: 'kept' } })
+  })
+
+  it('redacts shared routes from performance transactions and spans', () => {
+    const scrubbed = scrubSentryTransaction({
+      type: 'transaction',
+      transaction: '/e/shareTokenValue?claim=claim-value',
+      request: { url: 'https://polaris-warikan.netlify.app/e/shareTokenValue?claim=claim-value' },
+      spans: [{
+        data: { url: 'https://polaris-warikan.netlify.app/e/shareTokenValue?deviceToken=device-value' },
+      }],
+    } as unknown as Parameters<typeof scrubSentryTransaction>[0])
+
+    expect(scrubbed.transaction).toBe('/e/[REDACTED]?claim=[REDACTED]')
+    expect(scrubbed.request?.url).toBe('https://polaris-warikan.netlify.app/e/[REDACTED]?claim=[REDACTED]')
+    expect(scrubbed.spans?.[0]?.data).toEqual({
+      url: 'https://polaris-warikan.netlify.app/e/[REDACTED]?deviceToken=[REDACTED]',
+    })
   })
 })
