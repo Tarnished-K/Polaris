@@ -5,6 +5,8 @@ const STORAGE_KEY = 'warikan.web.event-sessions.v1'
 export interface SharedEventRoute {
   shareToken: string
   claimToken: string | null
+  initialView: 'payment' | null
+  settlementId: string | null
 }
 
 export interface EventDeviceSession {
@@ -21,8 +23,20 @@ export function parseSharedEventRoute(
   const match = pathname.match(/^\/e\/([A-Za-z0-9_-]+)\/?$/)
   if (!match) return null
 
-  const claimToken = new URLSearchParams(search).get('claim')?.trim() || null
-  return { shareToken: match[1], claimToken }
+  const params = new URLSearchParams(search)
+  const claimToken = params.get('claim')?.trim() || null
+  const initialView = params.get('view') === 'payment' ? 'payment' : null
+  const settlementCandidate = params.get('settlement')?.trim() ?? ''
+  const settlementId = initialView && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(settlementCandidate)
+    ? settlementCandidate
+    : null
+  return { shareToken: match[1], claimToken, initialView, settlementId }
+}
+
+export function buildPaymentDeepLink(shareToken: string, settlementId?: string): string {
+  const params = new URLSearchParams({ view: 'payment' })
+  if (settlementId) params.set('settlement', settlementId)
+  return `/e/${shareToken}?${params.toString()}`
 }
 
 function readSessions(storage: Storage): SessionMap {

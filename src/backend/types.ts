@@ -1,4 +1,12 @@
-import type { EventDraft, Expense, Member, Settlement, WarikanEvent } from '../domain/types'
+import type {
+  EventDraft,
+  Expense,
+  Member,
+  PaymentProfile,
+  Settlement,
+  SettlementPaymentLink,
+  WarikanEvent,
+} from '../domain/types'
 import type { SettlementStatus } from '../domain/types'
 import type { Database } from './database.types'
 
@@ -51,6 +59,12 @@ export interface UnfinalizeEventResult {
   state?: EventState
 }
 
+export interface PaymentState {
+  currentMemberId: string
+  profiles: PaymentProfile[]
+  links: SettlementPaymentLink[]
+}
+
 export type IntegrationProvider = 'discord' | 'line'
 
 export interface NotificationIntegration {
@@ -74,6 +88,18 @@ export interface WarikanBackend {
   saveNotificationIntegration(eventId: string, provider: IntegrationProvider, destination: string): Promise<NotificationIntegration>
   deleteNotificationIntegration(eventId: string, provider: IntegrationProvider): Promise<void>
   queueTestNotification(eventId: string, integrationId: string, message: string): Promise<string>
+  getPaymentState(shareToken: string, deviceToken?: string): Promise<PaymentState>
+  savePaymentProfile(
+    shareToken: string,
+    deviceToken: string | undefined,
+    profile: Omit<PaymentProfile, 'memberId'>,
+  ): Promise<PaymentProfile>
+  saveSettlementPaymentLink(
+    shareToken: string,
+    deviceToken: string | undefined,
+    settlementId: string,
+    paypayRequestUrl?: string,
+  ): Promise<void>
   addExpense(input: AddExpenseInput): Promise<AddExpenseResult>
   updateExpense(input: ExpenseMutationInput): Promise<AddExpenseResult>
   saveOwnFixedAmount(shareToken: string, deviceToken: string, expenseId: string, fixedAmount?: number): Promise<void>

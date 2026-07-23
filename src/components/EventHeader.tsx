@@ -49,7 +49,7 @@ export function EventHeader({ event, members, activeTab, onTabChange, onOpenSett
         <button type="button" className={activeTab === 'expenses' ? 'is-active' : ''} onClick={() => onTabChange('expenses')}>支出イベント</button>
         <button type="button" className={activeTab === 'dashboard' ? 'is-active' : ''} onClick={() => onTabChange('dashboard')}>立替ダッシュボード</button>
         <button type="button" className={activeTab === 'settlements' ? 'is-active' : ''} onClick={() => onTabChange('settlements')}>みんなの精算状況</button>
-        <button type="button" className={activeTab === 'payment' ? 'is-active' : ''} onClick={() => onTabChange('payment')}>支払いへ進む</button>
+        <button type="button" className={activeTab === 'payment' ? 'is-active' : ''} onClick={() => onTabChange('payment')}>支払い・受け取り</button>
       </nav>
 
       <div className="event-header__actions">

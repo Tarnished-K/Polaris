@@ -4,6 +4,8 @@ import {
   validateDiscordWebhookUrl,
   validateLineDestination,
   validateMemberName,
+  validatePayPayId,
+  validatePayPayRequestUrl,
 } from './validation'
 
 describe('validateMemberName', () => {
@@ -15,6 +17,26 @@ describe('validateMemberName', () => {
   })
   it('rejects blank names', () => {
     expect(validateMemberName('  ').valid).toBe(false)
+  })
+})
+
+describe('payment handoff validation', () => {
+  it('accepts the documented PayPay ID format and an empty optional ID', () => {
+    expect(validatePayPayId('').valid).toBe(true)
+    expect(validatePayPayId('alice_123').valid).toBe(true)
+    expect(validatePayPayId('Alice').valid).toBe(false)
+    expect(validatePayPayId('1alice').valid).toBe(false)
+    expect(validatePayPayId('ab').valid).toBe(false)
+    expect(validatePayPayId('a'.repeat(16)).valid).toBe(false)
+  })
+
+  it('allows only HTTPS links on PayPay official domains', () => {
+    expect(validatePayPayRequestUrl('').valid).toBe(true)
+    expect(validatePayPayRequestUrl('https://paypay.ne.jp/request/example').valid).toBe(true)
+    expect(validatePayPayRequestUrl('https://qr.paypay.ne.jp/example').valid).toBe(true)
+    expect(validatePayPayRequestUrl('http://paypay.ne.jp/example').valid).toBe(false)
+    expect(validatePayPayRequestUrl('https://paypay.ne.jp.evil.example/request').valid).toBe(false)
+    expect(validatePayPayRequestUrl('https://user@paypay.ne.jp/request').valid).toBe(false)
   })
 })
 

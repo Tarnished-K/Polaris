@@ -145,6 +145,52 @@ try {
     { amount: 4000, gross: 6000, offset: 2000, status: 'pending' },
   )
   const settlementId = settlementResult.rows[0].id
+  await database.query("select set_config('request.jwt.claim.sub', '', false)")
+  await database.query(
+    'select public.upsert_payment_profile($1, $2, $3, true)',
+    [shareToken, deviceToken, 'participant_1'],
+  )
+  await assert.rejects(
+    database.query(
+      'select public.upsert_payment_profile($1, $2, $3, true)',
+      [shareToken, deviceToken, 'Invalid-ID'],
+    ),
+    /INVALID_PAYPAY_ID/,
+  )
+  await database.query(
+    'select public.set_settlement_payment_link($1, $2, $3::uuid, $4)',
+    [shareToken, deviceToken, settlementId, 'https://paypay.ne.jp/request/backend-smoke'],
+  )
+  await assert.rejects(
+    database.query(
+      'select public.set_settlement_payment_link($1, $2, $3::uuid, $4)',
+      [shareToken, otherDeviceToken, settlementId, 'https://paypay.ne.jp/request/unauthorized'],
+    ),
+    /RECEIVER_REQUIRED/,
+  )
+  await assert.rejects(
+    database.query(
+      'select public.set_settlement_payment_link($1, $2, $3::uuid, $4)',
+      [shareToken, deviceToken, settlementId, 'https://paypay.ne.jp.evil.example/request'],
+    ),
+    /INVALID_PAYPAY_REQUEST_URL/,
+  )
+  const paymentState = await database.query(
+    'select public.get_payment_state($1, $2) as state',
+    [shareToken, deviceToken],
+  )
+  assert.equal(paymentState.rows[0].state.currentMemberId, payer.id)
+  assert.deepEqual(paymentState.rows[0].state.profiles, [{
+    memberId: payer.id,
+    paypayId: 'participant_1',
+    acceptsCash: true,
+  }])
+  assert.deepEqual(paymentState.rows[0].state.links, [{
+    settlementId,
+    paypayRequestUrl: 'https://paypay.ne.jp/request/backend-smoke',
+  }])
+
+  await database.query("select set_config('request.jwt.claim.sub', $1, false)", [organizerId])
   await database.query('select public.report_settlement($1, null, $2::uuid)', [shareToken, settlementId])
   await database.query('select public.confirm_settlement($1, null, $2::uuid)', [shareToken, settlementId])
   await database.query('select public.revert_settlement($1, null, $2::uuid)', [shareToken, settlementId])

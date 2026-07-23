@@ -68,6 +68,17 @@ export interface Settlement {
   confirmedByMemberId?: string
 }
 
+export interface PaymentProfile {
+  memberId: string
+  paypayId?: string | null
+  acceptsCash: boolean
+}
+
+export interface SettlementPaymentLink {
+  settlementId: string
+  paypayRequestUrl: string
+}
+
 export interface EventDraft {
   title: string
   eventType: WarikanEvent['eventType']

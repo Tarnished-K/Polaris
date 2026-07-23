@@ -10,6 +10,7 @@ import type {
   ExpenseMutationInput,
   JoinEventResult,
   NotificationIntegration,
+  PaymentState,
   WarikanBackend,
   UnfinalizeEventResult,
 } from './types'
@@ -239,6 +240,43 @@ export function createWarikanBackend(config: SupabaseConfig, client?: WarikanSup
         p_dedupe_key: `integration-test:${integrationId}:${crypto.randomUUID()}`,
       })
       return requireData(data as string | null, error)
+    },
+
+    async getPaymentState(shareToken, deviceToken) {
+      const { data, error } = await supabase.rpc(
+        'get_payment_state',
+        allowSqlNull<'get_payment_state', 'p_device_token'>({
+          p_share_token: shareToken,
+          p_device_token: deviceToken ?? null,
+        }),
+      )
+      return requireData(data as PaymentState | null, error)
+    },
+
+    async savePaymentProfile(shareToken, deviceToken, profile) {
+      const { data, error } = await supabase.rpc(
+        'upsert_payment_profile',
+        allowSqlNull<'upsert_payment_profile', 'p_device_token' | 'p_paypay_id'>({
+          p_share_token: shareToken,
+          p_device_token: deviceToken ?? null,
+          p_paypay_id: profile.paypayId?.trim() || null,
+          p_accepts_cash: profile.acceptsCash,
+        }),
+      )
+      return requireData(data as PaymentState['profiles'][number] | null, error)
+    },
+
+    async saveSettlementPaymentLink(shareToken, deviceToken, settlementId, paypayRequestUrl) {
+      const { error } = await supabase.rpc(
+        'set_settlement_payment_link',
+        allowSqlNull<'set_settlement_payment_link', 'p_device_token' | 'p_paypay_request_url'>({
+          p_share_token: shareToken,
+          p_device_token: deviceToken ?? null,
+          p_settlement_id: settlementId,
+          p_paypay_request_url: paypayRequestUrl?.trim() || null,
+        }),
+      )
+      requireSuccess(error)
     },
 
     async addExpense(input: AddExpenseInput) {

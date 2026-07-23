@@ -21,8 +21,23 @@ test('navigates the demo dashboard and settlement views', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '立替ダッシュボード' })).toBeVisible()
   await page.getByRole('button', { name: 'みんなの精算状況' }).click()
   await expect(page.getByText('全員の精算状況')).toBeVisible()
-  await page.getByRole('button', { name: '支払いへ進む' }).click()
-  await expect(page.getByRole('button', { name: '支払いへ進む' })).toHaveClass(/is-active/)
+  await page.getByRole('button', { name: '支払い・受け取り' }).click()
+  await expect(page.getByRole('button', { name: '支払い・受け取り' })).toHaveClass(/is-active/)
+  await expect(page.getByRole('heading', { name: '支払い・受け取り' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'あなたの受取方法' })).toBeVisible()
+  await expect(page.getByText('精算を確定すると、支払い先と金額が表示されます。')).toBeVisible()
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
+  expect(overflow).toBe(false)
+})
+
+test('saves a local payment profile without collecting bank details', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '4人・2泊3日・全件金額指定テンプレート' }).click()
+  await page.getByRole('button', { name: '支払い・受け取り' }).click()
+  await page.getByLabel('PayPay ID（任意）').fill('organizer_1')
+  await page.getByRole('button', { name: '受取方法を保存' }).click()
+  await expect(page.getByText('受取方法を保存しました。')).toBeVisible()
+  await expect(page.getByText('銀行口座やカード情報は入力しないでください。')).toBeVisible()
 })
 
 test('opens and cancels the expense form without changing the demo', async ({ page }) => {

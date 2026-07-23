@@ -337,6 +337,35 @@ export type Database = {
           },
         ]
       }
+      member_payment_profiles: {
+        Row: {
+          accepts_cash: boolean
+          member_id: string
+          paypay_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          accepts_cash?: boolean
+          member_id: string
+          paypay_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          accepts_cash?: boolean
+          member_id?: string
+          paypay_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_payment_profiles_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: true
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       members: {
         Row: {
           claimed_at: string | null
@@ -531,6 +560,42 @@ export type Database = {
           },
         ]
       }
+      settlement_payment_links: {
+        Row: {
+          created_by_member_id: string
+          paypay_request_url: string
+          settlement_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_by_member_id: string
+          paypay_request_url: string
+          settlement_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_by_member_id?: string
+          paypay_request_url?: string
+          settlement_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settlement_payment_links_created_by_member_id_fkey"
+            columns: ["created_by_member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "settlement_payment_links_settlement_id_fkey"
+            columns: ["settlement_id"]
+            isOneToOne: true
+            referencedRelation: "settlements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       settlements: {
         Row: {
           amount: number
@@ -683,6 +748,10 @@ export type Database = {
             Args: { p_device_token: string; p_share_token: string }
             Returns: Json
           }
+      get_payment_state: {
+        Args: { p_device_token?: string; p_share_token: string }
+        Returns: Json
+      }
       join_event: {
         Args: { p_device_token: string; p_name: string; p_share_token: string }
         Returns: Json
@@ -778,8 +847,26 @@ export type Database = {
         }
         Returns: undefined
       }
+      set_settlement_payment_link: {
+        Args: {
+          p_device_token: string
+          p_paypay_request_url?: string
+          p_settlement_id: string
+          p_share_token: string
+        }
+        Returns: undefined
+      }
       unfinalize_event: {
         Args: { p_event_id: string; p_force?: boolean }
+        Returns: Json
+      }
+      upsert_payment_profile: {
+        Args: {
+          p_accepts_cash?: boolean
+          p_device_token: string
+          p_paypay_id?: string
+          p_share_token: string
+        }
         Returns: Json
       }
       update_expense: {

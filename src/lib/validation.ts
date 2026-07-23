@@ -25,3 +25,34 @@ export function validateLineDestination(value: string): { valid: boolean; error?
   if (/^[A-Za-z0-9_-]{16,128}$/.test(destination)) return { valid: true }
   return { valid: false, error: 'LINEのUser／Group／Room IDを入力してください。' }
 }
+
+export function validatePayPayId(value: string): { valid: boolean; error?: string } {
+  const paypayId = value.trim()
+  if (!paypayId || /^[a-z][a-z0-9_]{2,14}$/.test(paypayId)) return { valid: true }
+  return {
+    valid: false,
+    error: 'PayPay IDは英小文字で始まる3〜15文字の英小文字・数字・アンダーバーで入力してください。',
+  }
+}
+
+export function validatePayPayRequestUrl(value: string): { valid: boolean; error?: string } {
+  const requestUrl = value.trim()
+  if (!requestUrl) return { valid: true }
+  try {
+    const url = new URL(requestUrl)
+    const officialHost = url.hostname === 'paypay.ne.jp' || url.hostname.endsWith('.paypay.ne.jp')
+    if (
+      url.protocol === 'https:' &&
+      officialHost &&
+      !url.username &&
+      !url.password &&
+      !url.port &&
+      requestUrl.length <= 2048
+    ) {
+      return { valid: true }
+    }
+  } catch {
+    // Use one user-facing message for malformed and unsupported links.
+  }
+  return { valid: false, error: 'PayPay公式ドメインのHTTPS請求リンクを入力してください。' }
+}

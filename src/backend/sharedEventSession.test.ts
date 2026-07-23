@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   getOrCreateEventSession,
+  buildPaymentDeepLink,
   parseSharedEventRoute,
   saveEventMember,
 } from './sharedEventSession'
@@ -22,7 +23,23 @@ describe('parseSharedEventRoute', () => {
     expect(parseSharedEventRoute('/e/share_123', '?claim=claim_456')).toEqual({
       shareToken: 'share_123',
       claimToken: 'claim_456',
+      initialView: null,
+      settlementId: null,
     })
+  })
+
+  it('reads a safe payment deep link without accepting arbitrary settlement IDs', () => {
+    const settlementId = '10000000-0000-4000-8000-000000000001'
+    expect(parseSharedEventRoute('/e/share_123', `?view=payment&settlement=${settlementId}`)).toEqual({
+      shareToken: 'share_123',
+      claimToken: null,
+      initialView: 'payment',
+      settlementId,
+    })
+    expect(parseSharedEventRoute('/e/share_123', '?view=payment&settlement=../../secret')?.settlementId).toBeNull()
+    expect(buildPaymentDeepLink('share_123', settlementId)).toBe(
+      `/e/share_123?view=payment&settlement=${settlementId}`,
+    )
   })
 
   it('rejects unrelated and nested paths', () => {

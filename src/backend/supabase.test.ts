@@ -76,3 +76,52 @@ describe('notification integration settings', () => {
     }))
   })
 })
+
+describe('payment handoff backend', () => {
+  it('loads actor-scoped payment data and saves profile and request-link changes', async () => {
+    const paymentState = {
+      currentMemberId: 'member-a',
+      profiles: [{ memberId: 'member-a', paypayId: 'alice_123', acceptsCash: true }],
+      links: [{ settlementId: 'settlement-a', paypayRequestUrl: 'https://paypay.ne.jp/request/example' }],
+    }
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: paymentState, error: null })
+      .mockResolvedValueOnce({ data: paymentState.profiles[0], error: null })
+      .mockResolvedValueOnce({ data: null, error: null })
+    const backend = createWarikanBackend(
+      { url: 'https://example.supabase.co', publishableKey: 'test-key' },
+      { rpc } as unknown as SupabaseClient,
+    )
+
+    await expect(backend.getPaymentState('share-token', 'device-token')).resolves.toEqual(paymentState)
+    await expect(backend.savePaymentProfile('share-token', 'device-token', {
+      paypayId: 'alice_123',
+      acceptsCash: true,
+    })).resolves.toEqual(paymentState.profiles[0])
+    await expect(backend.saveSettlementPaymentLink(
+      'share-token',
+      'device-token',
+      'settlement-a',
+      'https://paypay.ne.jp/request/example',
+    )).resolves.toBeUndefined()
+
+    expect(rpc.mock.calls).toEqual([
+      ['get_payment_state', {
+        p_share_token: 'share-token',
+        p_device_token: 'device-token',
+      }],
+      ['upsert_payment_profile', {
+        p_share_token: 'share-token',
+        p_device_token: 'device-token',
+        p_paypay_id: 'alice_123',
+        p_accepts_cash: true,
+      }],
+      ['set_settlement_payment_link', {
+        p_share_token: 'share-token',
+        p_device_token: 'device-token',
+        p_settlement_id: 'settlement-a',
+        p_paypay_request_url: 'https://paypay.ne.jp/request/example',
+      }],
+    ])
+  })
+})

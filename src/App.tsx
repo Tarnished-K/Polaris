@@ -6,6 +6,7 @@ import { DebugPerspectiveSwitcher } from './components/DebugPerspectiveSwitcher'
 import { ExpenseForm, type ExpenseDraftInput } from './components/ExpenseForm'
 const EventSettingsView = lazy(() => import('./components/EventSettingsView').then(({ EventSettingsView }) => ({ default: EventSettingsView })))
 import { HomeView } from './components/HomeView'
+const PaymentView = lazy(() => import('./components/PaymentView').then(({ PaymentView }) => ({ default: PaymentView })))
 const SettlementView = lazy(() => import('./components/SettlementView').then(({ SettlementView }) => ({ default: SettlementView })))
 import { SharedEventEntry } from './components/SharedEventEntry'
 import { useWarikanApp } from './state/useWarikanApp'
@@ -21,12 +22,19 @@ import { useOnlineStatus } from './state/useOnlineStatus'
 import { createWarikanBackend, readSupabaseConfig } from './backend/supabase'
 import {
   getOrCreateEventSession,
+  buildPaymentDeepLink,
   parseSharedEventRoute,
   saveEventMember,
 } from './backend/sharedEventSession'
 import { useSupabaseAuth } from './backend/useSupabaseAuth'
-import type { AddExpenseInput, EventState, UnfinalizeEventResult } from './backend/types'
-import type { EventDraft } from './domain/types'
+import type { AddExpenseInput, EventState, PaymentState, UnfinalizeEventResult } from './backend/types'
+import type { EventDraft, PaymentProfile } from './domain/types'
+
+const EMPTY_PAYMENT_STATE: PaymentState = {
+  currentMemberId: '',
+  profiles: [],
+  links: [],
+}
 
 export function App() {
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
@@ -43,6 +51,9 @@ export function App() {
   const [cloudEvent, setCloudEvent] = useState(Boolean(sharedRoute))
   const [queuedExpenses, setQueuedExpenses] = useState<PendingExpense[]>([])
   const [flushRevision, setFlushRevision] = useState(0)
+  const [paymentState, setPaymentState] = useState<PaymentState>(EMPTY_PAYMENT_STATE)
+  const [paymentStateLoading, setPaymentStateLoading] = useState(false)
+  const [paymentStateError, setPaymentStateError] = useState('')
   const loadedAttempt = useRef<number | null>(null)
   const flushingPending = useRef(false)
   const auth = useSupabaseAuth()
@@ -107,7 +118,14 @@ export function App() {
           )
           saveEventMember(window.localStorage, sharedRoute.shareToken, claimed.memberId)
           loadRemoteEvent(claimed.state, claimed.memberId)
-          window.history.replaceState(null, '', `/e/${sharedRoute.shareToken}`)
+          if (sharedRoute.initialView) setView(sharedRoute.initialView)
+          window.history.replaceState(
+            null,
+            '',
+            sharedRoute.initialView === 'payment'
+              ? buildPaymentDeepLink(sharedRoute.shareToken, sharedRoute.settlementId ?? undefined)
+              : `/e/${sharedRoute.shareToken}`,
+          )
           setSharedEntry({ phase: 'ready' })
           return
         }
@@ -117,6 +135,7 @@ export function App() {
         if (currentMemberId) {
           saveEventMember(window.localStorage, sharedRoute.shareToken, currentMemberId)
           loadRemoteEvent(remote, currentMemberId)
+          if (sharedRoute.initialView) setView(sharedRoute.initialView)
           setSharedEntry({ phase: 'ready' })
         } else {
           loadRemoteEvent(remote, null)
@@ -131,7 +150,7 @@ export function App() {
     }
 
     void load()
-  }, [auth.loading, backend, loadRemoteEvent, sharedLoadAttempt, sharedRoute])
+  }, [auth.loading, backend, loadRemoteEvent, setView, sharedLoadAttempt, sharedRoute])
 
   const joinSharedEvent = async (name: string) => {
     if (!backend || !sharedRoute) return
@@ -139,6 +158,7 @@ export function App() {
     const joined = await backend.joinEvent(sharedRoute.shareToken, session.deviceToken, name)
     saveEventMember(window.localStorage, sharedRoute.shareToken, joined.memberId)
     loadRemoteEvent(joined.state, joined.memberId)
+    if (sharedRoute.initialView) setView(sharedRoute.initialView)
     setSharedEntry({ phase: 'ready' })
     void backend.broadcastEventChange(sharedRoute.shareToken)
   }
@@ -199,6 +219,42 @@ export function App() {
       void refresh()
     })
   }, [backend, cloudEvent, currentMemberId, event, loadRemoteEvent, organizer, setView, sharedEntry.phase, view])
+
+  useEffect(() => {
+    if (view !== 'payment' || !event || !currentMemberId || sharedEntry.phase !== 'ready') return
+    let disposed = false
+
+    if (!cloudEvent || !backend) {
+      setPaymentState((current) => ({
+        currentMemberId,
+        profiles: current.currentMemberId === currentMemberId && current.profiles.length > 0
+          ? current.profiles
+          : members.map((member) => ({ memberId: member.id, paypayId: null, acceptsCash: true })),
+        links: current.currentMemberId === currentMemberId ? current.links : [],
+      }))
+      setPaymentStateLoading(false)
+      setPaymentStateError('')
+      return
+    }
+
+    const deviceToken = organizer
+      ? undefined
+      : getOrCreateEventSession(window.localStorage, event.shareToken).deviceToken
+    setPaymentStateLoading(true)
+    setPaymentStateError('')
+    void backend.getPaymentState(event.shareToken, deviceToken)
+      .then((state) => {
+        if (!disposed) setPaymentState(state)
+      })
+      .catch((cause) => {
+        if (!disposed) setPaymentStateError(cause instanceof Error ? cause.message : '受取方法を読み込めませんでした。')
+      })
+      .finally(() => {
+        if (!disposed) setPaymentStateLoading(false)
+      })
+
+    return () => { disposed = true }
+  }, [backend, cloudEvent, currentMemberId, event, members, organizer, sharedEntry.phase, view])
 
   useEffect(() => {
     if (!event || !cloudEvent) {
@@ -326,6 +382,44 @@ export function App() {
       await backend.broadcastEventChange(event.shareToken)
       await refreshRemoteEvent()
     } else revertLocalSettlement(settlementId)
+  }
+  const savePaymentProfile = async (profile: Omit<PaymentProfile, 'memberId'>) => {
+    if (!currentMemberId) throw new Error('参加者を確認できません。')
+    if (cloudEvent && backend) {
+      const saved = await backend.savePaymentProfile(event.shareToken, eventDeviceToken, profile)
+      setPaymentState((current) => ({
+        ...current,
+        profiles: [...current.profiles.filter((item) => item.memberId !== saved.memberId), saved],
+      }))
+      await backend.broadcastEventChange(event.shareToken)
+      return
+    }
+    setPaymentState((current) => ({
+      ...current,
+      currentMemberId,
+      profiles: [
+        ...current.profiles.filter((item) => item.memberId !== currentMemberId),
+        { memberId: currentMemberId, ...profile },
+      ],
+    }))
+  }
+  const saveSettlementPaymentLink = async (settlementId: string, paypayRequestUrl?: string) => {
+    if (cloudEvent && backend) {
+      await backend.saveSettlementPaymentLink(event.shareToken, eventDeviceToken, settlementId, paypayRequestUrl)
+      const refreshed = await backend.getPaymentState(event.shareToken, eventDeviceToken)
+      setPaymentState(refreshed)
+      await backend.broadcastEventChange(event.shareToken)
+      return
+    }
+    setPaymentState((current) => ({
+      ...current,
+      links: paypayRequestUrl
+        ? [
+            ...current.links.filter((item) => item.settlementId !== settlementId),
+            { settlementId, paypayRequestUrl },
+          ]
+        : current.links.filter((item) => item.settlementId !== settlementId),
+    }))
   }
   const saveEventSettings = async (draft: EventDraft) => {
     if (cloudEvent && backend) {
@@ -508,7 +602,34 @@ export function App() {
     )
   }
 
-  if (view === 'settlement' || view === 'payment') {
+  if (view === 'payment') {
+    return (
+      <>
+        <Suspense fallback={lazyViewFallback}><PaymentView
+          event={event}
+          members={members}
+          currentMemberId={currentMemberId}
+          settlements={displaySettlements}
+          paymentState={paymentState}
+          loading={paymentStateLoading}
+          loadError={paymentStateError}
+          initialSettlementId={sharedRoute?.settlementId}
+          onBack={() => setView('home')}
+          onOpenDashboard={() => setView('dashboard')}
+          onOpenSettlements={() => setView('settlement')}
+          onOpenSettings={() => setView('settings')}
+          onSaveProfile={savePaymentProfile}
+          onSaveLink={saveSettlementPaymentLink}
+          onReportSettlement={reportSettlement}
+          onConfirmSettlement={confirmSettlement}
+          onRevertSettlement={revertSettlement}
+        /></Suspense>
+        {perspectiveSwitcher}
+      </>
+    )
+  }
+
+  if (view === 'settlement') {
     return (
       <>
       <Suspense fallback={lazyViewFallback}><SettlementView
@@ -518,7 +639,7 @@ export function App() {
         expenses={expenses}
         settlements={displaySettlements}
         draftExpenseCount={draftExpenseCount}
-        activeTab={view === 'payment' ? 'payment' : 'settlements'}
+        activeTab="settlements"
         onBack={() => setView('home')}
         onOpenDashboard={() => setView('dashboard')}
         onOpenSettlements={() => setView('settlement')}
