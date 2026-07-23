@@ -2,7 +2,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(12);
+select plan(20);
 
 insert into auth.users(id, email, created_at, updated_at)
 values
@@ -157,6 +157,69 @@ select throws_ok(
   '42501', 'permission denied for table expenses', 'anon cannot read expenses directly'
 );
 set local role postgres;
+
+select is(
+  (
+    select count(*)::integer
+    from information_schema.table_privileges
+    where table_schema = 'public'
+      and grantee in ('PUBLIC', 'anon', 'authenticated')
+  ),
+  0,
+  'Data API roles have no direct privileges on public tables'
+);
+
+select ok(
+  has_table_privilege('service_role', 'public.event_integrations', 'UPDATE'),
+  'service role retains direct table access for Edge Functions'
+);
+
+set local role authenticated;
+select throws_ok(
+  'update public.settlements set status = status where false',
+  '42501',
+  'permission denied for table settlements',
+  'authenticated callers cannot update settlements directly'
+);
+select throws_ok(
+  'update public.members set device_token_hash = device_token_hash where false',
+  '42501',
+  'permission denied for table members',
+  'authenticated callers cannot replace member credentials directly'
+);
+set local role postgres;
+
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.organizer_upsert_integration(uuid,public.integration_provider,text,text)',
+    'EXECUTE'
+  ),
+  'legacy integration RPC is not available to authenticated callers'
+);
+
+create table public.security_default_acl_table_probe(id integer);
+create sequence public.security_default_acl_sequence_probe;
+create function public.security_default_acl_function_probe()
+returns integer
+language sql
+as $$ select 1 $$;
+
+select ok(
+  not has_table_privilege('anon', 'public.security_default_acl_table_probe', 'SELECT')
+    and not has_table_privilege('authenticated', 'public.security_default_acl_table_probe', 'SELECT'),
+  'future public tables are not exposed to Data API roles by default'
+);
+select ok(
+  not has_sequence_privilege('anon', 'public.security_default_acl_sequence_probe', 'USAGE')
+    and not has_sequence_privilege('authenticated', 'public.security_default_acl_sequence_probe', 'USAGE'),
+  'future public sequences are not exposed to Data API roles by default'
+);
+select ok(
+  not has_function_privilege('anon', 'public.security_default_acl_function_probe()', 'EXECUTE')
+    and not has_function_privilege('authenticated', 'public.security_default_acl_function_probe()', 'EXECUTE'),
+  'future public functions are not exposed to Data API roles by default'
+);
 
 select * from finish();
 rollback;

@@ -217,6 +217,7 @@ export type Database = {
           day_index: number | null
           event_id: string
           id: string
+          idempotency_key: string | null
           note: string | null
           payer_member_id: string
           split_method: Database["public"]["Enums"]["split_method"]
@@ -232,6 +233,7 @@ export type Database = {
           day_index?: number | null
           event_id: string
           id?: string
+          idempotency_key?: string | null
           note?: string | null
           payer_member_id: string
           split_method?: Database["public"]["Enums"]["split_method"]
@@ -247,6 +249,7 @@ export type Database = {
           day_index?: number | null
           event_id?: string
           id?: string
+          idempotency_key?: string | null
           note?: string | null
           payer_member_id?: string
           split_method?: Database["public"]["Enums"]["split_method"]
@@ -802,6 +805,7 @@ export type Database = {
           p_category: Database["public"]["Enums"]["expense_category"]
           p_day_index: number
           p_device_token: string
+          p_idempotency_key?: string
           p_note?: string
           p_payer_member_id: string
           p_share_token: string
@@ -900,16 +904,16 @@ export type Database = {
         }
         Returns: Json
       }
-      delete_payment_profile: {
-        Args: { p_device_token: string; p_share_token: string }
-        Returns: undefined
-      }
       delete_expense: {
         Args: {
           p_device_token: string
           p_expense_id: string
           p_share_token: string
         }
+        Returns: undefined
+      }
+      delete_payment_profile: {
+        Args: { p_device_token: string; p_share_token: string }
         Returns: undefined
       }
       finalize_event: { Args: { p_event_id: string }; Returns: Json }
@@ -954,13 +958,13 @@ export type Database = {
         Args: { p_event_id: string; p_name: string }
         Returns: Json
       }
-      organizer_issue_claim_token: {
-        Args: { p_event_id: string; p_member_id: string }
-        Returns: Json
-      }
       organizer_delete_event: {
         Args: { p_event_id: string }
         Returns: undefined
+      }
+      organizer_issue_claim_token: {
+        Args: { p_event_id: string; p_member_id: string }
+        Returns: Json
       }
       organizer_queue_notification: {
         Args: {
@@ -1020,6 +1024,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      purge_expired_payment_data: { Args: never; Returns: Json }
       report_settlement: {
         Args: {
           p_device_token: string

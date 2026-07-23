@@ -16,6 +16,7 @@ import {
   enqueuePendingExpense,
   flushPendingExpenses,
   pendingExpensesForEvent,
+  pendingExpenseIdempotencyKey,
   removePendingExpense,
   retryPendingExpense,
   type PendingExpense,
@@ -327,7 +328,12 @@ export function App() {
         storage: window.localStorage,
         shareToken: event.shareToken,
         send: async (pending) => {
-          await backend.addExpense({ ...pending.input, shareToken: event.shareToken, deviceToken })
+          await backend.addExpense({
+            ...pending.input,
+            shareToken: event.shareToken,
+            deviceToken,
+            idempotencyKey: pendingExpenseIdempotencyKey(pending.id),
+          })
         },
         onChange: (items) => {
           if (mounted) setQueuedExpenses(items)

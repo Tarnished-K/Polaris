@@ -75,6 +75,13 @@ function expenseParams(input: AddExpenseInput | ExpenseMutationInput) {
   }
 }
 
+function addExpenseParams(input: AddExpenseInput) {
+  return {
+    ...expenseParams(input),
+    p_idempotency_key: input.idempotencyKey ?? null,
+  }
+}
+
 export function readSupabaseConfig(): SupabaseConfig | null {
   const url = import.meta.env.VITE_SUPABASE_URL?.trim()
   const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim()
@@ -347,7 +354,9 @@ export function createWarikanBackend(config: SupabaseConfig, client?: WarikanSup
     async addExpense(input: AddExpenseInput) {
       const { data, error } = await supabase.rpc(
         'add_expense',
-        allowSqlNull<'add_expense', 'p_device_token' | 'p_day_index' | 'p_note'>(expenseParams(input)),
+        allowSqlNull<'add_expense', 'p_device_token' | 'p_day_index' | 'p_note' | 'p_idempotency_key'>(
+          addExpenseParams(input),
+        ),
       )
       return requireData(data as AddExpenseResult | null, error)
     },

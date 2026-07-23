@@ -2,7 +2,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(32);
+select plan(40);
 
 select has_table('public', 'events', 'events table exists');
 select has_table('public', 'members', 'members table exists');
@@ -114,6 +114,136 @@ select is(
   (select name from public.members where event_id = (select id from public.events where title = 'SQLテスト旅行') and name = '参加者(1)'),
   '参加者(1)',
   'joining duplicate receives suffix one'
+);
+
+select throws_ok(
+  format(
+    'select public.organizer_add_member(%L::uuid, %L)',
+    e.id,
+    '幹事'
+  ),
+  '22023',
+  'INVALID_MEMBER_NAME',
+  'server rejects a reserved member display name'
+)
+from public.events e
+where e.title = 'SQLテスト旅行';
+
+select throws_ok(
+  format(
+    'select public.organizer_add_member(%L::uuid, %L)',
+    e.id,
+    '山田' || chr(8238) || 'abc'
+  ),
+  '22023',
+  'INVALID_MEMBER_NAME',
+  'server rejects bidirectional display controls in member names'
+)
+from public.events e
+where e.title = 'SQLテスト旅行';
+
+select throws_ok(
+  format(
+    'select public.organizer_add_member(%L::uuid, %L)',
+    e.id,
+    '山田' || chr(10) || '太郎'
+  ),
+  '22023',
+  'INVALID_MEMBER_NAME',
+  'server rejects control characters in member names'
+)
+from public.events e
+where e.title = 'SQLテスト旅行';
+
+select lives_ok(
+  format(
+    'select public.add_expense(%L,%L,%L,%L,%s,%L::uuid,%L,null,%L::jsonb,null,%L::uuid)',
+    e.share_token,
+    repeat('d', 43),
+    'food',
+    '再送される昼食',
+    1200,
+    payer.id,
+    'equal',
+    jsonb_build_array(
+      jsonb_build_object('memberId', payer.id),
+      jsonb_build_object('memberId', proxy.id)
+    )::text,
+    '81000000-0000-0000-0000-000000000001'
+  ),
+  'first queued expense submission succeeds'
+)
+from public.events e
+join public.members payer on payer.event_id = e.id and payer.name = '参加者'
+join public.members proxy on proxy.event_id = e.id and proxy.name = '代理参加者'
+where e.title = 'SQLテスト旅行';
+
+select is(
+  (
+    public.add_expense(
+      e.share_token,
+      repeat('d', 43),
+      'food',
+      '再送される昼食',
+      1200,
+      payer.id,
+      'equal',
+      null,
+      jsonb_build_array(
+        jsonb_build_object('memberId', payer.id),
+        jsonb_build_object('memberId', proxy.id)
+      ),
+      null,
+      '81000000-0000-0000-0000-000000000001'
+    )->>'expenseId'
+  ),
+  (
+    select expense.id::text
+    from public.expenses expense
+    where expense.event_id = e.id
+      and expense.idempotency_key = '81000000-0000-0000-0000-000000000001'
+  ),
+  'repeating a queued submission returns the original expense'
+)
+from public.events e
+join public.members payer on payer.event_id = e.id and payer.name = '参加者'
+join public.members proxy on proxy.event_id = e.id and proxy.name = '代理参加者'
+where e.title = 'SQLテスト旅行';
+
+select is(
+  (
+    select count(*)::integer
+    from public.expenses
+    where idempotency_key = '81000000-0000-0000-0000-000000000001'
+  ),
+  1,
+  'idempotent retries create one expense row'
+);
+
+select is(
+  (
+    select count(*)::integer
+    from public.expense_targets target
+    join public.expenses expense on expense.id = target.expense_id
+    where expense.idempotency_key = '81000000-0000-0000-0000-000000000001'
+  ),
+  2,
+  'idempotent retries create one target set'
+);
+
+select is(
+  (
+    select count(*)::integer
+    from public.activity_logs log
+    where log.action = 'add_expense'
+      and log.detail->>'expenseId' = (
+        select expense.id::text
+        from public.expenses expense
+        where expense.idempotency_key = '81000000-0000-0000-0000-000000000001'
+      )
+  ),
+  1,
+  'idempotent retries write one activity record'
 );
 
 select * from finish();

@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { decryptIntegrationSecret, type EncryptedSecret } from '../_shared/integration-secrets.ts'
+import { matchesServiceRoleAuthorization } from '../_shared/internal-auth.ts'
 
 type Job = {
   id: string
@@ -18,8 +19,9 @@ type Integration = {
 }
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const supabase = createClient(supabaseUrl, serviceRoleKey)
+const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+
+type SupabaseClient = ReturnType<typeof createClient>
 
 function messageFromPayload(payload: Record<string, unknown>): string {
   const message = typeof payload.message === 'string' ? payload.message.trim() : ''
@@ -74,7 +76,7 @@ async function deliver(job: Job, integration: Integration) {
   throw new Error(`UNSUPPORTED_PROVIDER_${integration.provider.toUpperCase()}`)
 }
 
-async function processJob(job: Job) {
+async function processJob(job: Job, supabase: SupabaseClient) {
   const attempt = job.attempts
 
   const { data: integration, error: integrationError } = await supabase
@@ -105,8 +107,13 @@ async function processJob(job: Job) {
 
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
+  if (!matchesServiceRoleAuthorization(request.headers.get('authorization'), serviceRoleKey)) {
+    return Response.json({ error: 'AUTHENTICATION_REQUIRED' }, { status: 401 })
+  }
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey)
   const { data: jobs, error } = await supabase.rpc('claim_notification_jobs', { p_limit: 20 })
   if (error) return Response.json({ error: error.message }, { status: 500 })
-  for (const job of (jobs ?? []) as Job[]) await processJob(job)
+  for (const job of (jobs ?? []) as Job[]) await processJob(job, supabase)
   return Response.json({ processed: jobs?.length ?? 0 })
 })

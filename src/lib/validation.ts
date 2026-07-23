@@ -51,6 +51,9 @@ export function validatePayPayId(value: string): { valid: boolean; error?: strin
 export function validatePayPayRequestUrl(value: string): { valid: boolean; error?: string } {
   const requestUrl = value.trim()
   if (!requestUrl) return { valid: true }
+  if (/[\u0000-\u001f\u007f]/u.test(requestUrl)) {
+    return { valid: false, error: 'PayPay公式ドメインのHTTPS請求リンクを入力してください。' }
+  }
   try {
     const url = new URL(requestUrl)
     const officialHost = url.hostname === 'paypay.ne.jp' || url.hostname === 'qr.paypay.ne.jp'

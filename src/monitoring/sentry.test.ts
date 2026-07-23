@@ -88,6 +88,28 @@ describe('Sentry privacy scrubbing', () => {
     expect(redactSensitiveText('/rpc?paypay%20id=encoded_user&safe=kept')).toBe(
       '/rpc?paypay%20id=[REDACTED]&safe=kept',
     )
+    expect(redactSensitiveText('/rpc?paypay%5Fid%3Dalice_123&safe=kept')).toBe(
+      '/rpc?paypay%5Fid%3D[REDACTED]&safe=kept',
+    )
+    expect(redactSensitiveText('/rpc?%70%61%79%70%61%79%52%65%71%75%65%73%74%55%72%6C=secret&safe=kept')).toBe(
+      '/rpc?%70%61%79%70%61%79%52%65%71%75%65%73%74%55%72%6C=[REDACTED]&safe=kept',
+    )
+  })
+
+  it('redacts encoded sensitive keys inside JSON string payloads', () => {
+    const scrubbed = scrubSentryEvent({
+      request: {
+        data: JSON.stringify({
+          paypay_id: 'alice_123',
+          'paypay%5Frequest%5Furl': 'https://paypay.ne.jp/request/secret',
+          safe: 'kept',
+        }),
+      },
+    } as unknown as Parameters<typeof scrubSentryEvent>[0])
+
+    expect(scrubbed.request?.data).toBe(
+      '{"paypay_id":"[REDACTED]","paypay%5Frequest%5Furl":"[REDACTED]","safe":"kept"}',
+    )
   })
 
   it('redacts shared routes from performance transactions and spans', () => {

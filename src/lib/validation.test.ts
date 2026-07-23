@@ -52,6 +52,9 @@ describe('payment handoff validation', () => {
     expect(validatePayPayRequestUrl('https://paypay.ne.jp.evil.example/request').valid).toBe(false)
     expect(validatePayPayRequestUrl('https://user@paypay.ne.jp/request').valid).toBe(false)
     expect(validatePayPayRequestUrl('https://paypay.ne.jp:443/request').valid).toBe(false)
+    expect(validatePayPayRequestUrl('https://paypay.ne.jp/request/\r\nsecret').valid).toBe(false)
+    expect(validatePayPayRequestUrl('https://paypay.ne.jp/request/\u0000secret').valid).toBe(false)
+    expect(validatePayPayRequestUrl('https://paypay.ne.jp/request/\u007fsecret').valid).toBe(false)
   })
 })
 

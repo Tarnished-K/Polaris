@@ -5,11 +5,24 @@ const STORAGE_KEY = 'warikan.web.pending-expenses.v1'
 export type PendingExpense = {
   id: string
   shareToken: string
-  input: Omit<AddExpenseInput, 'deviceToken' | 'shareToken'>
+  input: Omit<AddExpenseInput, 'deviceToken' | 'idempotencyKey' | 'shareToken'>
   queuedAt: string
   status: 'pending' | 'sending' | 'failed'
   attempts: number
   lastError?: string
+}
+
+type StoredPendingInput = PendingExpense['input'] & { idempotencyKey?: unknown }
+
+function withoutStoredIdempotencyKey(input: StoredPendingInput): PendingExpense['input'] {
+  const { idempotencyKey: _idempotencyKey, ...safeInput } = input
+  return safeInput
+}
+
+export function pendingExpenseIdempotencyKey(id: string): string | undefined {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    ? id
+    : undefined
 }
 
 export function readPendingExpenses(storage: Storage): PendingExpense[] {
@@ -20,6 +33,7 @@ export function readPendingExpenses(storage: Storage): PendingExpense[] {
           .filter((item) => Boolean(item?.id && item?.shareToken && item?.input))
           .map((item) => ({
             ...item,
+            input: withoutStoredIdempotencyKey(item.input),
             status: item.status === 'failed' || item.status === 'sending' ? item.status : 'pending',
             attempts: Number.isInteger(item.attempts) ? item.attempts : 0,
           }))
@@ -38,7 +52,7 @@ export function enqueuePendingExpense(storage: Storage, shareToken: string, inpu
   const pending: PendingExpense = {
     id: crypto.randomUUID(),
     shareToken,
-    input,
+    input: withoutStoredIdempotencyKey(input),
     queuedAt: new Date().toISOString(),
     status: 'pending',
     attempts: 0,

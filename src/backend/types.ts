@@ -41,6 +41,7 @@ export interface ClaimInvitation {
 export interface AddExpenseInput {
   shareToken: string
   deviceToken: string
+  idempotencyKey?: string
   category: Expense['category']
   title: string
   note?: string
@@ -56,7 +57,7 @@ export interface AddExpenseResult {
   status: Expense['status']
 }
 
-export interface ExpenseMutationInput extends AddExpenseInput {
+export interface ExpenseMutationInput extends Omit<AddExpenseInput, 'idempotencyKey'> {
   expenseId: string
 }
 

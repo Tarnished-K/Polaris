@@ -2,7 +2,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(18);
+select plan(20);
 
 select has_function(
   'public',
@@ -183,6 +183,83 @@ select throws_ok(
   'P0002',
   'EVENT_NOT_FOUND',
   'assistant status rejects an unknown event'
+);
+set local role postgres;
+
+insert into public.notification_jobs(
+  event_id,
+  integration_id,
+  notification_type,
+  payload,
+  scheduled_for,
+  status,
+  attempts,
+  max_attempts,
+  dedupe_key
+)
+select
+  event.id,
+  integration.id,
+  'terminal-failed-probe',
+  jsonb_build_object('message', 'terminal'),
+  now() - interval '1 minute',
+  'failed',
+  1,
+  5,
+  'terminal-failed-probe'
+from public.events event
+join public.event_integrations integration on integration.event_id = event.id
+where event.title = '通知ライフサイクルテスト';
+
+insert into public.notification_jobs(
+  event_id,
+  integration_id,
+  notification_type,
+  payload,
+  scheduled_for,
+  status,
+  attempts,
+  max_attempts,
+  dedupe_key
+)
+select
+  event.id,
+  integration.id,
+  'exhausted-pending-probe',
+  jsonb_build_object('message', 'exhausted'),
+  now() - interval '1 minute',
+  'pending',
+  5,
+  5,
+  'exhausted-pending-probe'
+from public.events event
+join public.event_integrations integration on integration.event_id = event.id
+where event.title = '通知ライフサイクルテスト';
+
+set local role service_role;
+with claimed as materialized (
+  select *
+  from public.claim_notification_jobs(100)
+)
+select is(
+  (
+    select count(*)::integer
+    from claimed
+    where notification_type in ('terminal-failed-probe', 'exhausted-pending-probe')
+  ),
+  0,
+  'dispatcher does not reclaim terminal or exhausted jobs'
+);
+
+select is(
+  (
+    select count(*)::integer
+    from public.notification_jobs
+    where (notification_type = 'terminal-failed-probe' and status = 'failed')
+      or (notification_type = 'exhausted-pending-probe' and status = 'pending')
+  ),
+  2,
+  'terminal and exhausted jobs keep their terminal state'
 );
 set local role postgres;
 

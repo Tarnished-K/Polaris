@@ -3,6 +3,7 @@ import {
   enqueuePendingExpense,
   flushPendingExpenses,
   pendingExpensesForEvent,
+  pendingExpenseIdempotencyKey,
   readPendingExpenses,
   removePendingExpense,
   retryPendingExpense,
@@ -25,6 +26,7 @@ describe('pending expense queue', () => {
       category: 'food', title: 'Offline lunch', amount: 1200, payerMemberId: 'member-a', splitMethod: 'equal', targets: []
     })
     expect(JSON.stringify(readPendingExpenses(storage))).not.toContain('deviceToken')
+    expect(JSON.stringify(readPendingExpenses(storage))).not.toContain('idempotencyKey')
     expect(pendingExpensesForEvent(storage, 'event-a')).toHaveLength(1)
     expect(pendingExpensesForEvent(storage, 'event-b')).toHaveLength(0)
     removePendingExpense(storage, pending.id)
@@ -43,6 +45,13 @@ describe('pending expense queue', () => {
       id: 'legacy', shareToken: 'event-a', queuedAt: '2026-07-23T00:00:00.000Z', input: { title: 'Lunch' },
     }]))
     expect(readPendingExpenses(storage)[0]).toMatchObject({ status: 'pending', attempts: 0 })
+    expect(pendingExpenseIdempotencyKey('legacy')).toBeUndefined()
+  })
+
+  it('uses only valid UUID queue IDs as idempotency keys', () => {
+    const id = '9b77bf66-9655-4e75-85e4-a855f16f5f8f'
+    expect(pendingExpenseIdempotencyKey(id)).toBe(id)
+    expect(pendingExpenseIdempotencyKey('manually-corrupted')).toBeUndefined()
   })
 
   it('sends event items in registration order and removes successes', async () => {

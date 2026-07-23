@@ -1,6 +1,6 @@
 import type { Breadcrumb, ErrorEvent, EventHint } from '@sentry/react'
 
-const sensitiveKey = /(?:name|member|participant|token|secret|password|authorization|cookie|webhook|destination|externalSpace|paypay)/i
+const sensitiveKey = /(?:name|member|participant|claim|token|secret|password|authorization|cookie|webhook|destination|externalSpace|paypay)/i
 type SentryModule = typeof import('@sentry/react')
 type SentryInitOptions = Parameters<SentryModule['init']>[0]
 type BeforeSendTransaction = NonNullable<SentryInitOptions['beforeSendTransaction']>
@@ -8,13 +8,40 @@ type TransactionEvent = Parameters<BeforeSendTransaction>[0]
 let sentryModulePromise: Promise<SentryModule> | undefined
 let earlyListenersAttached = false
 
+function decodeKey(key: string): string {
+  try {
+    return decodeURIComponent(key.replace(/\+/g, ' '))
+  } catch {
+    return key
+  }
+}
+
+function isSensitiveKey(key: string): boolean {
+  return sensitiveKey.test(key) || sensitiveKey.test(decodeKey(key))
+}
+
+function redactSensitiveQueryParameters(value: string): string {
+  return value.replace(/([?&])([^&#\s]+)/g, (match, separator: string, segment: string) => {
+    const literalEquals = segment.indexOf('=')
+    if (literalEquals >= 0) {
+      const key = segment.slice(0, literalEquals)
+      return isSensitiveKey(key)
+        ? `${separator}${key}=[REDACTED]`
+        : match
+    }
+
+    const encodedEquals = /%3d/i.exec(segment)
+    if (!encodedEquals || encodedEquals.index === undefined) return match
+    const key = segment.slice(0, encodedEquals.index)
+    return isSensitiveKey(key)
+      ? `${separator}${segment.slice(0, encodedEquals.index + encodedEquals[0].length)}[REDACTED]`
+      : match
+  })
+}
+
 export function redactSensitiveText(value: string): string {
-  return value
+  return redactSensitiveQueryParameters(value)
     .replace(/\/e\/[A-Za-z0-9_-]+/g, '/e/[REDACTED]')
-    .replace(
-      /([?&](?:claim|token|deviceToken|p?_?paypay(?:%20|_|-)?(?:id|request(?:%20|_|-)?(?:url|link)))=)[^&#\s]+/gi,
-      '$1[REDACTED]',
-    )
     .replace(
       /((?:"?p?_?paypay(?:_?id|_?request_?(?:url|link))"?|PayPay\s+(?:ID|request\s+(?:URL|link)))\s*(?::|=|=>)\s*["']?)[^,;\s}"'&]+/gi,
       '$1[REDACTED]',
@@ -28,8 +55,21 @@ export function redactSensitiveText(value: string): string {
 }
 
 function scrub(value: unknown, key = ''): unknown {
-  if (sensitiveKey.test(key)) return '[REDACTED]'
-  if (typeof value === 'string') return redactSensitiveText(value)
+  if (isSensitiveKey(key)) return '[REDACTED]'
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (
+      (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+      (trimmed.startsWith('[') && trimmed.endsWith(']'))
+    ) {
+      try {
+        return JSON.stringify(scrub(JSON.parse(trimmed)))
+      } catch {
+        // Malformed JSON is still scrubbed as ordinary text below.
+      }
+    }
+    return redactSensitiveText(value)
+  }
   if (Array.isArray(value)) return value.map((item) => scrub(item))
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [childKey, scrub(child, childKey)]))

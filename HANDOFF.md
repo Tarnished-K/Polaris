@@ -11,8 +11,8 @@
 - フェーズ8「支払い・受け取りアクションハブ」は実装・自動検証・クラウドDB反映まで完了した。支払い画面はPayPay ID・外部生成の請求リンク・現金に対応し、銀行口座とアプリ内決済は扱わない。
 - 2026-07-24に支出メモ、カード上の対象者別支払い状態、金額／固定内訳の拡大、関係マップの自分中心デフォルト、相手への全額または支出イベントを選ぶ部分支払いを実装した。クラウド反映は本節下の統合チェックポイントで行う。
 - フェーズ9は精算ライフサイクル通知、未払いだけへの1日1回の催促、読み取り専用集計、5分・1回限りの外部アカウント紐付け、LINE HMAC／Discord Ed25519署名検証、リプレイ／レート制限、紐付け済み本人の支払い報告・受取確認まで実装・クラウド反映した。外部IDの平文や個人名をURLへ保存しない。
-- ROADMAP2フェーズA〜Dは2026-07-24に完了。PayPay認可最小化、30日purge、本人／event完全削除、本人確認URL、本番debug除外、Claude監査を`SECURITY_AUDIT.md`へまとめた。
-- 最新自動検証はVitest 130件、Playwright 37件成功・対象外2件skip、PGlite 13マイグレーション、Hosted pgTAP 179 assertions、Production build、`npm audit` 0件が成功。LighthouseはDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a62671447325c36b329d230`。
+- ROADMAP2フェーズA〜Dは2026-07-24に完了。PayPay認可最小化、30日purge、本人／event完全削除、本人確認URL、本番debug除外、2回のClaude監査と独立再検証を`SECURITY_AUDIT.md`へまとめた。
+- 最新自動検証はVitest 137件、Playwright 37件成功・対象外2件skip、PGlite 15マイグレーション、Hosted pgTAP 198 assertions、Production build、`npm audit` 0件が成功。LighthouseはDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a62671447325c36b329d230`。
 - フェーズ8・9の統合チェックポイント`c02a743`までGitHub `main`へpush済み。GitHub Actions `Validate application` run `30001049555`でunit、build、Playwright、Lighthouse、artifact upload、backend validateが全成功した。
 - 実機接続を試みたが、この実行環境のADBブリッジは接続拒否（OS error 10061）、BrowserMCPは`Transport closed`のため、物理端末テストを完了扱いにはしていない。下記「フェーズ3実機依存確認」の手順で端末接続可能時に実施する。
 
@@ -37,8 +37,10 @@
 - 代理登録者の7日・1回限りclaim URLを設定画面へ接続した。発行、自動コピー、再コピー、期限表示、再発行、旧token無効化、claimed後拒否を実装した。
 - SentryでPayPay ID／請求URLを含む構造化data、JSON文字列、breadcrumb、transaction、spanを伏字化した。NetlifyへCSP、Referrer Policy、nosniff、frame拒否、Permissions Policyを追加した。
 - `DebugPerspectiveSwitcher`と専用CSSをdev-only chunkへ移し、production asset scanで本番bundleからコード／文言が消えていることを固定した。
-- Hosted pgTAPはManagement API経由のDocker不要runnerへ対応し、基盤32、workflow 10、authorization 12、payment 74、notification 18、external account 33の計179 assertionsが実Postgresで成功した。
-- Claudeの読み取り専用監査と独立再現の結果、Critical／Highは0件。誤検知と残余リスクを`SECURITY_AUDIT.md`へ記録し、URL encodeされたSentryキーと参加者名の制御文字を追加で防御した。
+- Hosted pgTAPはManagement API経由のDocker不要runnerへ対応し、基盤40、workflow 10、authorization 20、payment 75、notification 20、external account 33の計198 assertionsが実Postgresで成功した。
+- 2回目のClaude読み取り専用監査で、旧default ACLによる直接table DML迂回をHighとして確認した。`20260724000300_security_boundary_hardening.sql`と`20260724000400_function_default_acl_hardening.sql`を適用し、クライアントロールのpublic table直接権限0件、旧連携RPC実行不可、将来オブジェクトの明示grant化を実Postgresで確認した。修正後の未解決Critical／Highは0件。
+- notification dispatcherはservice-role bearerをコード内でも照合し、terminal／試行上限到達jobを再取得しない。Function version 5を本番へ反映し、`verify_jwt=true`、publishable keyでのPOSTが関数内の`AUTHENTICATION_REQUIRED` 401になることを確認した。
+- オフライン支出のpending UUIDをDB unique制約へ接続して二重登録を防止した。参加者名の予約語／制御文字、PayPay URLの制御文字、Sentryのencode済み機密キーもDBまたは送信前処理で拒否・伏字化する。
 - 平文PayPay IDのDB dump／service role侵害と、localStorageのdevice tokenは残余リスク。保持期間を延ばす場合はDBと鍵を分離したEdge Function暗号化を再評価する。
 - NetlifyはProduction contextで1回だけ反映し、Deploy `6a62671447325c36b329d230`を公開した。実レスポンスでCSP、Referrer Policy、nosniff、DENY、Permissions Policy、HSTSを確認し、production assetsのdebug marker 0件、320pxのホーム／支払い画面で横あふれなし、console／page error 0件を確認した。
 - LighthouseはDesktop 1.00／Mobile 0.97を維持した。本人確認URLと完全削除UIによる設定chunkの意図的増加（13.7KB→17.2KB）だけを新baselineへ更新し、初期JSは487.0KB→481.6KBへ減少した。

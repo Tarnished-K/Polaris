@@ -343,6 +343,22 @@ where event.title = '支払い導線テスト';
 select throws_ok(
   format(
     'select public.set_settlement_payment_link(%L,%L,%L::uuid,%L)',
+    event.share_token,
+    repeat('r', 43),
+    settlement.id,
+    'https://paypay.ne.jp/request/safe' || chr(13) || chr(10) || 'header'
+  ),
+  '22023',
+  'INVALID_PAYPAY_REQUEST_URL',
+  'control characters in PayPay request paths are rejected'
+)
+from public.events event
+join public.settlements settlement on settlement.event_id = event.id and settlement.amount > 0
+where event.title = '支払い導線テスト';
+
+select throws_ok(
+  format(
+    'select public.set_settlement_payment_link(%L,%L,%L::uuid,%L)',
     event.share_token, repeat('r', 43), settlement.id, 'https://paypay.ne.jp/request/zero'
   ),
   'P0002', 'SETTLEMENT_NOT_FOUND', 'amount-zero settlements cannot receive payment links'

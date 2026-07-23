@@ -15,6 +15,71 @@ describe('generateDeviceToken', () => {
   })
 })
 
+describe('expense mutation transport', () => {
+  it('sends an idempotency key only when adding an expense', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: { expenseId: 'expense-a', status: 'finalized' },
+      error: null,
+    })
+    const backend = createWarikanBackend(
+      { url: 'https://example.supabase.co', publishableKey: 'test-key' },
+      { rpc } as unknown as SupabaseClient,
+    )
+    const input = {
+      shareToken: 'share-token',
+      deviceToken: 'device-token',
+      category: 'food' as const,
+      title: 'Lunch',
+      amount: 1200,
+      payerMemberId: 'member-a',
+      splitMethod: 'equal' as const,
+      targets: [{ memberId: 'member-a' }],
+    }
+
+    await backend.addExpense({
+      ...input,
+      idempotencyKey: '9b77bf66-9655-4e75-85e4-a855f16f5f8f',
+    })
+    await backend.updateExpense({
+      ...input,
+      expenseId: 'expense-a',
+    })
+
+    expect(rpc.mock.calls[0]).toEqual([
+      'add_expense',
+      {
+        p_share_token: 'share-token',
+        p_device_token: 'device-token',
+        p_category: 'food',
+        p_title: 'Lunch',
+        p_note: null,
+        p_amount: 1200,
+        p_payer_member_id: 'member-a',
+        p_split_method: 'equal',
+        p_day_index: null,
+        p_targets: [{ memberId: 'member-a' }],
+        p_idempotency_key: '9b77bf66-9655-4e75-85e4-a855f16f5f8f',
+      },
+    ])
+    expect(rpc.mock.calls[1]).toEqual([
+      'update_expense',
+      {
+        p_share_token: 'share-token',
+        p_device_token: 'device-token',
+        p_category: 'food',
+        p_title: 'Lunch',
+        p_note: null,
+        p_amount: 1200,
+        p_payer_member_id: 'member-a',
+        p_split_method: 'equal',
+        p_day_index: null,
+        p_targets: [{ memberId: 'member-a' }],
+        p_expense_id: 'expense-a',
+      },
+    ])
+  })
+})
+
 describe('share URL rotation', () => {
   it('uses the authenticated organizer RPC and returns the new event state', async () => {
     const state = {
