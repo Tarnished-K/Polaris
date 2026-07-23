@@ -10,8 +10,8 @@
 - 通知は暗号化されたDiscord／LINE登録UI、outbox、dispatcherまで本番反映済み。実WebhookとLINE channel access tokenを使う外部配送だけ未確認。
 - フェーズ8「支払い・受け取りアクションハブ」は実装・自動検証・クラウドDB反映まで完了した。支払い画面はPayPay ID・外部生成の請求リンク・現金に対応し、銀行口座とアプリ内決済は扱わない。
 - フェーズ9は精算ライフサイクル通知、未払いだけへの1日1回の催促、読み取り専用集計、5分・1回限りの外部アカウント紐付け、LINE HMAC／Discord Ed25519署名検証、リプレイ／レート制限、紐付け済み本人の支払い報告・受取確認まで実装・クラウド反映した。外部IDの平文や個人名をURLへ保存しない。
-- 最終ローカル自動検証はVitest 111件、Playwright 20件、PGlite 10マイグレーション、Production buildが成功。Lighthouseの直近本番値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a61c1aa254402e0ea1eea83`。
-- フェーズ7までの実装一式は`main`の`b37fc64`、手動CI起動対応は`6ae1d84`としてGitHubへpush済み。フェーズ8・9はローカルの連続コミットとして検証済みで、統合push後にGitHub Actionsを確認する。
+- 最終ローカル自動検証はVitest 111件、Playwright 20件、PGlite 10マイグレーション、Production buildが成功。Lighthouseの直近値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a61f34636b0e4e5c55a8360`。
+- フェーズ8・9の統合チェックポイント`c02a743`までGitHub `main`へpush済み。GitHub Actions `Validate application` run `30001049555`でunit、build、Playwright、Lighthouse、artifact upload、backend validateが全成功した。
 - 実機接続を試みたが、この実行環境のADBブリッジは接続拒否（OS error 10061）、BrowserMCPは`Transport closed`のため、物理端末テストを完了扱いにはしていない。下記「フェーズ3実機依存確認」の手順で端末接続可能時に実施する。
 
 ### 運用受け入れ残件
@@ -33,6 +33,7 @@
 - `EXTERNAL_ACCOUNT_HMAC_KEY`と`ASSISTANT_INTERNAL_KEY`を暗号乱数で生成してSupabase secretsへ設定した。値は標準出力、文書、リポジトリへ保存していない。
 - `event-assistant`、`line-assistant-webhook`、`discord-assistant-webhook`を本番へデプロイし、3関数ともACTIVE、`verify_jwt=false`を確認した。内部鍵なし401、正しい内部鍵＋未知イベント404、LINE／Discordの未署名リクエスト401を本番URLで確認した。
 - 統合後にVitest 111件、PGlite 10マイグレーション、Playwright Desktop／Mobile 20件、Production build、Lighthouse Desktop 1.00／Mobile 0.97、`git diff --check`が成功した。
+- Netlify Deploy `6a61f34636b0e4e5c55a8360`へ本番反映した。`https://polaris-warikan.netlify.app`はHTTP 200、新しいmain assetと設定chunkが配信され、Google OAuthが`accounts.google.com`へ遷移し、390pxの支払い画面に横あふれとconsole／page errorがないことを確認した。通知設定はクラウドイベントの認証済み幹事だけに表示されるため、権限を迂回せず本番設定chunkの秘密再表示禁止文言まで確認した。
 
 ## 2026-07-23 フェーズ1 Google認証の完了
 
