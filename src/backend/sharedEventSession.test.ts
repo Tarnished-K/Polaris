@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getOrCreateEventSession,
   buildPaymentDeepLink,
+  buildSettlementDeepLink,
   parseSharedEventRoute,
   saveEventMember,
 } from './sharedEventSession'
@@ -40,6 +41,10 @@ describe('parseSharedEventRoute', () => {
     expect(buildPaymentDeepLink('share_123', settlementId)).toBe(
       `/e/share_123?view=payment&settlement=${settlementId}`,
     )
+    expect(buildSettlementDeepLink('share_123', settlementId)).toBe(
+      `/e/share_123?view=settlement&settlement=${settlementId}`,
+    )
+    expect(parseSharedEventRoute('/e/share_123', `?view=settlement&settlement=${settlementId}`)?.initialView).toBe('settlement')
   })
 
   it('rejects unrelated and nested paths', () => {

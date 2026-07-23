@@ -2,7 +2,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$Report,
   [string]$RepoRoot,
-  [string]$FallbackModel = 'Fabele5',
+  [string]$FallbackModel = 'Fable5',
   [string]$OutputPath,
   [switch]$ResetSession
 )

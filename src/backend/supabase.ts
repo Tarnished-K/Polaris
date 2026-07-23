@@ -344,6 +344,11 @@ export function createWarikanBackend(config: SupabaseConfig, client?: WarikanSup
       return requireData(data as UnfinalizeEventResult | null, error)
     },
 
+    async scheduleSettlementReminders(eventId) {
+      const { data, error } = await supabase.rpc('schedule_settlement_reminders', { p_event_id: eventId })
+      return requireData(data as number | null, error)
+    },
+
     async reportSettlement(shareToken, deviceToken, settlementId) {
       const { error } = await supabase.rpc(
         'report_settlement',

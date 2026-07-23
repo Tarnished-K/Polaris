@@ -75,6 +75,16 @@ describe('notification integration settings', () => {
       p_payload: { message: 'Test' },
     }))
   })
+
+  it('schedules only server-selected pending settlement reminders', async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: 2, error: null })
+    const backend = createWarikanBackend(
+      { url: 'https://example.supabase.co', publishableKey: 'test-key' },
+      { rpc } as unknown as SupabaseClient,
+    )
+    await expect(backend.scheduleSettlementReminders('event-a')).resolves.toBe(2)
+    expect(rpc).toHaveBeenCalledWith('schedule_settlement_reminders', { p_event_id: 'event-a' })
+  })
 })
 
 describe('payment handoff backend', () => {

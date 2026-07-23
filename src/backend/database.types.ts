@@ -752,6 +752,10 @@ export type Database = {
         Args: { p_device_token?: string; p_share_token: string }
         Returns: Json
       }
+      get_settlement_status_for_bot: {
+        Args: { p_share_token: string }
+        Returns: Json
+      }
       join_event: {
         Args: { p_device_token: string; p_name: string; p_share_token: string }
         Returns: Json
@@ -846,6 +850,10 @@ export type Database = {
           p_share_token: string
         }
         Returns: undefined
+      }
+      schedule_settlement_reminders: {
+        Args: { p_event_id: string }
+        Returns: number
       }
       set_settlement_payment_link: {
         Args: {

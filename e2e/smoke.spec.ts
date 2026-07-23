@@ -40,6 +40,20 @@ test('saves a local payment profile without collecting bank details', async ({ p
   await expect(page.getByText('銀行口座やカード情報は入力しないでください。')).toBeVisible()
 })
 
+test('shows organizer reminders only after settlement finalization', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '箱根旅行のデモを見る' }).click()
+  await page.getByRole('button', { name: 'みんなの精算状況' }).click()
+  await page.getByText('幹事メニュー', { exact: true }).click()
+  await page.getByRole('button', { name: '精算を確定する' }).click()
+  await page.getByRole('button', { name: '確定する', exact: true }).click()
+  await page.getByRole('button', { name: '支払い・受け取り' }).click()
+  const reminder = page.getByRole('button', { name: /未払い\d+件を催促/ })
+  await expect(reminder).toBeVisible()
+  await reminder.click()
+  await expect(page.getByText('新しい催促はありません。本日送信済み、または通知先が未設定です。')).toBeVisible()
+})
+
 test('opens and cancels the expense form without changing the demo', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '4人・2泊3日・全件金額指定テンプレート' }).click()

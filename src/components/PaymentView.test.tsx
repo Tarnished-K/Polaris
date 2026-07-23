@@ -43,6 +43,7 @@ const callbacks = {
   onReportSettlement: vi.fn(),
   onConfirmSettlement: vi.fn(),
   onRevertSettlement: vi.fn(),
+  onScheduleReminders: vi.fn().mockResolvedValue(1),
 }
 
 describe('PaymentView', () => {
@@ -92,6 +93,7 @@ describe('PaymentView', () => {
     expect(markup).toContain('Payerから受け取る')
     expect(markup).toContain('この相手用のPayPay請求リンク')
     expect(markup).toContain('全員の支払い進捗')
+    expect(markup).toContain('未払い1件を催促')
     expect(markup).toContain('Organizer')
   })
 })

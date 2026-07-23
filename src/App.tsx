@@ -22,7 +22,7 @@ import { useOnlineStatus } from './state/useOnlineStatus'
 import { createWarikanBackend, readSupabaseConfig } from './backend/supabase'
 import {
   getOrCreateEventSession,
-  buildPaymentDeepLink,
+  buildSharedEventDeepLink,
   parseSharedEventRoute,
   saveEventMember,
 } from './backend/sharedEventSession'
@@ -122,9 +122,11 @@ export function App() {
           window.history.replaceState(
             null,
             '',
-            sharedRoute.initialView === 'payment'
-              ? buildPaymentDeepLink(sharedRoute.shareToken, sharedRoute.settlementId ?? undefined)
-              : `/e/${sharedRoute.shareToken}`,
+            buildSharedEventDeepLink(
+              sharedRoute.shareToken,
+              sharedRoute.initialView,
+              sharedRoute.settlementId ?? undefined,
+            ),
           )
           setSharedEntry({ phase: 'ready' })
           return
@@ -383,6 +385,11 @@ export function App() {
       await refreshRemoteEvent()
     } else revertLocalSettlement(settlementId)
   }
+
+  const scheduleSettlementReminders = async () => {
+    if (!cloudEvent || !backend || !event) return 0
+    return backend.scheduleSettlementReminders(event.id)
+  }
   const savePaymentProfile = async (profile: Omit<PaymentProfile, 'memberId'>) => {
     if (!currentMemberId) throw new Error('参加者を確認できません。')
     if (cloudEvent && backend) {
@@ -623,6 +630,7 @@ export function App() {
           onReportSettlement={reportSettlement}
           onConfirmSettlement={confirmSettlement}
           onRevertSettlement={revertSettlement}
+          onScheduleReminders={scheduleSettlementReminders}
         /></Suspense>
         {perspectiveSwitcher}
       </>

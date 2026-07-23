@@ -23,6 +23,9 @@
 - `save_own_fixed_amount` / `finalize_expense`
 - `finalize_event` / `unfinalize_event`
 - `report_settlement` / `confirm_settlement` / `revert_settlement`
+- `get_payment_state` / `upsert_payment_profile` / `set_settlement_payment_link`
+- `schedule_settlement_reminders`
+- `get_settlement_status_for_bot`（service role限定）
 - `organizer_upsert_integration`
 - `organizer_queue_notification`
 
@@ -56,7 +59,7 @@ VITE_SUPABASE_URL=...
 VITE_SUPABASE_PUBLISHABLE_KEY=...
 ```
 
-秘密鍵やservice role keyをVite環境変数へ入れてはいけない。通知の実配送は将来のEdge Functionまたは専用workerからservice roleでoutboxを処理する。
+秘密鍵やservice role keyをVite環境変数へ入れてはいけない。通知の実配送は`notification-dispatcher`、読み取り専用BOT照会は`event-assistant` Edge Functionがservice roleで処理する。
 
 ## クラウドプロジェクト
 
@@ -74,3 +77,15 @@ https://nrixujdkgvexnnqfoned.supabase.co/auth/v1/callback
 ## 通知設計
 
 イベントごとにBotプロセスを作らず、共通Botと外部スペースを `event_integrations` でイベントへ紐付ける。アプリ本体は `notification_jobs` に送信意図を記録し、LINE／Discord固有の送信処理は別adapterで実行する。`dedupe_key` により同一リマインドの重複送信を防ぐ。
+
+精算確定、支払い報告、受取確認、全員完了はDBの状態遷移から自動的にoutboxへ追加する。幹事の催促は`pending`の精算だけを対象とし、同じ精算・通知先への登録は1日1回まで。`reported`と`paid`は対象外。
+
+共有URLのdeep linkは次の形に統一する。device token、claim token、外部アカウントIDは含めない。
+
+```text
+https://polaris-warikan.netlify.app/e/{shareToken}?view=payment
+https://polaris-warikan.netlify.app/e/{shareToken}?view=payment&settlement={settlementId}
+https://polaris-warikan.netlify.app/e/{shareToken}?view=settlement&settlement={settlementId}
+```
+
+`event-assistant`の前半実装は、内部adapterから`x-assistant-key`で呼ぶ読み取り専用`status`契約だけを公開する。`ASSISTANT_INTERNAL_KEY`はSupabase Function secretに置き、クライアントへ渡さない。LINE／Discordから直接受ける署名検証済みWebhookと、外部アカウント紐付け後の状態変更は後半実装で追加する。

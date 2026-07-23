@@ -8,8 +8,9 @@
 - フェーズ7はオフライン再送、Sentry基盤、共有URLローテーションまで実装済み。実スマートフォンのオフライン→オンライン復帰と、実Sentry DSNでのイベント到達は外部環境依存の最終受け入れとして残る。
 - バックログ6.1（関係マップ）、6.2（債務マトリクス）、6.3（予約語バリデーション）は実装済み。
 - 通知は暗号化されたDiscord／LINE登録UI、outbox、dispatcherまで本番反映済み。実WebhookとLINE channel access tokenを使う外部配送だけ未確認。
-- フェーズ8「支払い・受け取りアクションハブ」はローカル実装と自動検証まで完了した。支払い画面はPayPay ID・外部生成の請求リンク・現金に対応し、銀行口座とアプリ内決済は扱わない。フェーズ9のBOTは通知・状況照会・deep linkから始め、参加者とのワンタイム紐付け後だけ本人の支払い操作を許可する。
-- 最終ローカル自動検証はVitest 83件、Playwright 18件、PGlite 8マイグレーション、Production buildが成功。Lighthouseの直近本番値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a61c1aa254402e0ea1eea83`。フェーズ8はデプロイ回数削減のため未反映。
+- フェーズ8「支払い・受け取りアクションハブ」はローカル実装と自動検証まで完了した。支払い画面はPayPay ID・外部生成の請求リンク・現金に対応し、銀行口座とアプリ内決済は扱わない。
+- フェーズ9前半は精算ライフサイクル通知、未払いだけへの1日1回の催促、service role限定の集計状況RPC、内部secretで保護した読み取り専用`event-assistant`、安全なdeep linkまで実装した。後半は参加者とのワンタイム紐付け後だけ本人の支払い操作を許可する。
+- 最終ローカル自動検証はVitest 89件、Playwright 20件、PGlite 9マイグレーション、Production buildが成功。Lighthouseの直近本番値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a61c1aa254402e0ea1eea83`。フェーズ8・9前半はデプロイ回数削減のため未反映。
 - 実装一式は`main`の`b37fc64`、手動CI起動対応は`6ae1d84`としてGitHubへpush済み。GitHub Actions `Validate application` run `29988948909`でunit、build、Playwright、Lighthouse、artifact upload、backend validateが全成功した。
 - 実機接続を試みたが、この実行環境のADBブリッジは接続拒否（OS error 10061）、BrowserMCPは`Transport closed`のため、物理端末テストを完了扱いにはしていない。下記「フェーズ3実機依存確認」の手順で端末接続可能時に実施する。
 
@@ -22,10 +23,10 @@
 
 ### 次のコード作業
 
-1. フェーズ8の支払い導線と既存outboxを使い、フェーズ9前半のライフサイクル通知、未払い対象だけへの催促、読み取り専用状況照会を実装する。
-2. 短時間・1回限りのコードによる`member_external_accounts`紐付け、LINE／Discord署名検証、リプレイ防止を実装する。
-3. BOTからの状態変更は紐付けと署名検証の完成後に限定し、既存精算RPCと同等のactor認可を通す。
-4. フェーズ8・9をまとめてクラウドDBへ反映し、対象pgTAPと実資格情報を必要としないEdge Function契約テストを実行してから、Netlifyを1回だけ更新する。
+1. 短時間・1回限りのコードによる`member_external_accounts`紐付け、解除、失効、再発行を実装する。コードはハッシュだけを保存する。
+2. LINE／Discord署名検証、timestamp＋nonceのリプレイ防止、受付応答とoutbox分離を実装する。
+3. BOTからの状態変更は紐付け済み本人だけに限定し、既存精算RPCと同等のactor認可を通す。幹事権限はチャットへ暗黙に継承しない。
+4. フェーズ8・9をまとめてクラウドDBへ反映し、追加済みpgTAP、Edge Function契約テスト、実資格情報不要の認可テストを通してから、Netlifyを1回だけ更新する。
 
 ## 2026-07-23 フェーズ1 Google認証の完了
 

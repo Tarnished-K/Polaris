@@ -30,6 +30,7 @@ interface PaymentViewProps {
   onReportSettlement: (settlementId: string) => void | Promise<void>
   onConfirmSettlement: (settlementId: string) => void | Promise<void>
   onRevertSettlement: (settlementId: string) => void | Promise<void>
+  onScheduleReminders: () => number | Promise<number>
 }
 
 function PaymentProfileEditor({
@@ -324,7 +325,11 @@ export function PaymentView({
   onReportSettlement,
   onConfirmSettlement,
   onRevertSettlement,
+  onScheduleReminders,
 }: PaymentViewProps) {
+  const [reminderBusy, setReminderBusy] = useState(false)
+  const [reminderMessage, setReminderMessage] = useState('')
+  const [reminderError, setReminderError] = useState('')
   const currentMember = members.find((member) => member.id === currentMemberId)
   const organizer = Boolean(currentMember?.isOrganizer)
   const outgoing = settlements.filter((settlement) => settlement.fromMemberId === currentMemberId && settlement.amount > 0)
@@ -338,6 +343,23 @@ export function PaymentView({
     () => new Map(paymentState.links.map((link) => [link.settlementId, link])),
     [paymentState.links],
   )
+  const pendingCount = settlements.filter((settlement) => settlement.amount > 0 && settlement.status === 'pending').length
+
+  const scheduleReminders = async () => {
+    setReminderBusy(true)
+    setReminderMessage('')
+    setReminderError('')
+    try {
+      const count = await onScheduleReminders()
+      setReminderMessage(count > 0
+        ? `未払いの精算について${count}件の通知を予約しました。`
+        : '新しい催促はありません。本日送信済み、または通知先が未設定です。')
+    } catch (cause) {
+      setReminderError(cause instanceof Error ? cause.message : '催促を予約できませんでした。')
+    } finally {
+      setReminderBusy(false)
+    }
+  }
 
   const renderCards = (items: Settlement[], mode: 'outgoing' | 'incoming' | 'overview') => (
     <div className="payment-action-list">
@@ -422,6 +444,22 @@ export function PaymentView({
                   <div><p className="eyebrow">幹事用</p><h2 id="all-payment-progress-heading">全員の支払い進捗</h2></div>
                   <span className="count-label">完了 {completedCount} / {settlements.length}</span>
                 </div>
+                <div className="payment-reminder-actions">
+                  <div>
+                    <strong>未払いの人だけに催促</strong>
+                    <p>同じ精算への通知は1日1回までです。報告済み・受取済みの人には送りません。</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="button button--secondary"
+                    disabled={reminderBusy || pendingCount === 0}
+                    onClick={() => void scheduleReminders()}
+                  >
+                    {reminderBusy ? '予約中…' : `未払い${pendingCount}件を催促`}
+                  </button>
+                </div>
+                {reminderMessage && <p className="form-success" role="status">{reminderMessage}</p>}
+                {reminderError && <p className="form-error" role="alert">{reminderError}</p>}
                 {settlements.length ? renderCards(settlements.filter((settlement) => settlement.amount > 0), 'overview') : <p className="payment-section-empty">支払いが必要な精算はありません。</p>}
               </section>
             )}

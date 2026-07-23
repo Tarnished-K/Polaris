@@ -107,6 +107,7 @@ export interface WarikanBackend {
   deleteExpense(shareToken: string, deviceToken: string | undefined, expenseId: string): Promise<void>
   finalizeEvent(eventId: string): Promise<EventState>
   unfinalizeEvent(eventId: string, force?: boolean): Promise<UnfinalizeEventResult>
+  scheduleSettlementReminders(eventId: string): Promise<number>
   reportSettlement(shareToken: string, deviceToken: string | undefined, settlementId: string): Promise<void>
   confirmSettlement(shareToken: string, deviceToken: string | undefined, settlementId: string): Promise<void>
   revertSettlement(shareToken: string, deviceToken: string | undefined, settlementId: string): Promise<SettlementStatus>

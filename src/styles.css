@@ -5278,6 +5278,29 @@ p {
   border-top: 1px solid var(--border);
 }
 
+.payment-reminder-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid rgba(75, 85, 195, 0.16);
+  border-radius: var(--radius-md);
+  background: rgba(238, 241, 255, 0.58);
+}
+
+.payment-reminder-actions strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.payment-reminder-actions p {
+  margin: 0;
+  color: var(--subtle);
+  font-size: 0.84rem;
+}
+
 @media (max-width: 760px) {
   .payment-layout {
     width: min(100% - 24px, 1120px);
@@ -5328,5 +5351,14 @@ p {
 
   .payment-action-card > header {
     display: grid;
+  }
+
+  .payment-reminder-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .payment-reminder-actions .button {
+    width: 100%;
   }
 }

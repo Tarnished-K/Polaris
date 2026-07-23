@@ -5,7 +5,7 @@ const STORAGE_KEY = 'warikan.web.event-sessions.v1'
 export interface SharedEventRoute {
   shareToken: string
   claimToken: string | null
-  initialView: 'payment' | null
+  initialView: 'payment' | 'settlement' | null
   settlementId: string | null
 }
 
@@ -25,7 +25,10 @@ export function parseSharedEventRoute(
 
   const params = new URLSearchParams(search)
   const claimToken = params.get('claim')?.trim() || null
-  const initialView = params.get('view') === 'payment' ? 'payment' : null
+  const requestedView = params.get('view')
+  const initialView = requestedView === 'payment' || requestedView === 'settlement'
+    ? requestedView
+    : null
   const settlementCandidate = params.get('settlement')?.trim() ?? ''
   const settlementId = initialView && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(settlementCandidate)
     ? settlementCandidate
@@ -34,7 +37,20 @@ export function parseSharedEventRoute(
 }
 
 export function buildPaymentDeepLink(shareToken: string, settlementId?: string): string {
-  const params = new URLSearchParams({ view: 'payment' })
+  return buildSharedEventDeepLink(shareToken, 'payment', settlementId)
+}
+
+export function buildSettlementDeepLink(shareToken: string, settlementId?: string): string {
+  return buildSharedEventDeepLink(shareToken, 'settlement', settlementId)
+}
+
+export function buildSharedEventDeepLink(
+  shareToken: string,
+  view?: SharedEventRoute['initialView'],
+  settlementId?: string,
+): string {
+  if (!view) return `/e/${shareToken}`
+  const params = new URLSearchParams({ view })
   if (settlementId) params.set('settlement', settlementId)
   return `/e/${shareToken}?${params.toString()}`
 }

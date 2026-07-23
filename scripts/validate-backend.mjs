@@ -132,6 +132,7 @@ try {
   await assert.rejects(database.query('select public.unfinalize_event($1::uuid, false)', [eventId]), /ORGANIZER_REQUIRED/)
   await database.query("select set_config('request.jwt.claim.sub', $1, false)", [organizerId])
 
+  await database.query("select public.organizer_upsert_integration($1::uuid, 'discord', 'channel-123', 'Trip channel')", [eventId])
   await database.query('select public.finalize_event($1::uuid)', [eventId])
   const settlementResult = await database.query('select id, amount, gross_amount, offset_amount, status::text from public.settlements where event_id = $1::uuid', [eventId])
   assert.equal(settlementResult.rows.length, 1)
@@ -145,6 +146,36 @@ try {
     { amount: 4000, gross: 6000, offset: 2000, status: 'pending' },
   )
   const settlementId = settlementResult.rows[0].id
+  const finalizedJob = await database.query(
+    "select notification_type, payload from public.notification_jobs where notification_type = 'settlement_finalized'",
+  )
+  assert.equal(finalizedJob.rows.length, 1)
+  assert.match(finalizedJob.rows[0].payload.url, new RegExp(`/e/${shareToken}\\?view=payment$`))
+  const firstReminder = await database.query(
+    'select public.schedule_settlement_reminders($1::uuid) as count',
+    [eventId],
+  )
+  const duplicateReminder = await database.query(
+    'select public.schedule_settlement_reminders($1::uuid) as count',
+    [eventId],
+  )
+  assert.equal(firstReminder.rows[0].count, 1)
+  assert.equal(duplicateReminder.rows[0].count, 0)
+  const pendingBotStatus = await database.query(
+    'select public.get_settlement_status_for_bot($1) as state',
+    [shareToken],
+  )
+  assert.deepEqual(
+    {
+      total: pendingBotStatus.rows[0].state.totalCount,
+      pending: pendingBotStatus.rows[0].state.pendingCount,
+      reported: pendingBotStatus.rows[0].state.reportedCount,
+      completed: pendingBotStatus.rows[0].state.completedCount,
+      remaining: pendingBotStatus.rows[0].state.remainingAmount,
+      allPaid: pendingBotStatus.rows[0].state.allPaid,
+    },
+    { total: 1, pending: 1, reported: 0, completed: 0, remaining: 4000, allPaid: false },
+  )
   await database.query("select set_config('request.jwt.claim.sub', '', false)")
   await database.query(
     'select public.upsert_payment_profile($1, $2, $3, true)',
@@ -193,6 +224,22 @@ try {
   await database.query("select set_config('request.jwt.claim.sub', $1, false)", [organizerId])
   await database.query('select public.report_settlement($1, null, $2::uuid)', [shareToken, settlementId])
   await database.query('select public.confirm_settlement($1, null, $2::uuid)', [shareToken, settlementId])
+  const completedBotStatus = await database.query(
+    'select public.get_settlement_status_for_bot($1) as state',
+    [shareToken],
+  )
+  assert.equal(completedBotStatus.rows[0].state.completedCount, 1)
+  assert.equal(completedBotStatus.rows[0].state.remainingAmount, 0)
+  assert.equal(completedBotStatus.rows[0].state.allPaid, true)
+  const lifecycleTypes = await database.query(
+    `select notification_type from public.notification_jobs
+     where notification_type in ('settlement_finalized', 'payment_reminder', 'payment_reported', 'payment_confirmed', 'settlement_completed')
+     order by notification_type`,
+  )
+  assert.deepEqual(
+    lifecycleTypes.rows.map((row) => row.notification_type),
+    ['payment_confirmed', 'payment_reminder', 'payment_reported', 'settlement_completed', 'settlement_finalized'],
+  )
   await database.query('select public.revert_settlement($1, null, $2::uuid)', [shareToken, settlementId])
   const reverted = await database.query('select status::text from public.settlements where id = $1::uuid', [settlementId])
   assert.equal(reverted.rows[0].status, 'reported')
@@ -203,7 +250,6 @@ try {
   const activeEvent = await database.query('select status::text from public.events where id = $1::uuid', [eventId])
   assert.equal(activeEvent.rows[0].status, 'active')
 
-  await database.query("select public.organizer_upsert_integration($1::uuid, 'discord', 'channel-123', 'Trip channel')", [eventId])
   await database.query(
     "select public.organizer_queue_notification($1::uuid, 'invite', '{\"message\":\"join\"}'::jsonb, null, null, now(), 'invite:initial')",
     [eventId],
