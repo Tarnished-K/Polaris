@@ -8,10 +8,10 @@
 - フェーズ7はオフライン再送、Sentry基盤、共有URLローテーションまで実装済み。実スマートフォンのオフライン→オンライン復帰と、実Sentry DSNでのイベント到達は外部環境依存の最終受け入れとして残る。
 - バックログ6.1（関係マップ）、6.2（債務マトリクス）、6.3（予約語バリデーション）は実装済み。
 - 通知は暗号化されたDiscord／LINE登録UI、outbox、dispatcherまで本番反映済み。実WebhookとLINE channel access tokenを使う外部配送だけ未確認。
-- フェーズ8「支払い・受け取りアクションハブ」はローカル実装と自動検証まで完了した。支払い画面はPayPay ID・外部生成の請求リンク・現金に対応し、銀行口座とアプリ内決済は扱わない。
-- フェーズ9は精算ライフサイクル通知、未払いだけへの1日1回の催促、読み取り専用集計、5分・1回限りの外部アカウント紐付け、LINE HMAC／Discord Ed25519署名検証、リプレイ／レート制限、紐付け済み本人の支払い報告・受取確認までコード実装した。外部IDの平文や個人名をURLへ保存しない。
-- 最終ローカル自動検証はVitest 111件、Playwright 20件、PGlite 10マイグレーション、Production buildが成功。Lighthouseの直近本番値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a61c1aa254402e0ea1eea83`。フェーズ8・9はデプロイ回数削減のため統合反映待ち。
-- 実装一式は`main`の`b37fc64`、手動CI起動対応は`6ae1d84`としてGitHubへpush済み。GitHub Actions `Validate application` run `29988948909`でunit、build、Playwright、Lighthouse、artifact upload、backend validateが全成功した。
+- フェーズ8「支払い・受け取りアクションハブ」は実装・自動検証・クラウドDB反映まで完了した。支払い画面はPayPay ID・外部生成の請求リンク・現金に対応し、銀行口座とアプリ内決済は扱わない。
+- フェーズ9は精算ライフサイクル通知、未払いだけへの1日1回の催促、読み取り専用集計、5分・1回限りの外部アカウント紐付け、LINE HMAC／Discord Ed25519署名検証、リプレイ／レート制限、紐付け済み本人の支払い報告・受取確認まで実装・クラウド反映した。外部IDの平文や個人名をURLへ保存しない。
+- 最終ローカル自動検証はVitest 111件、Playwright 20件、PGlite 10マイグレーション、Production buildが成功。Lighthouseの直近本番値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a61c1aa254402e0ea1eea83`。
+- フェーズ7までの実装一式は`main`の`b37fc64`、手動CI起動対応は`6ae1d84`としてGitHubへpush済み。フェーズ8・9はローカルの連続コミットとして検証済みで、統合push後にGitHub Actionsを確認する。
 - 実機接続を試みたが、この実行環境のADBブリッジは接続拒否（OS error 10061）、BrowserMCPは`Transport closed`のため、物理端末テストを完了扱いにはしていない。下記「フェーズ3実機依存確認」の手順で端末接続可能時に実施する。
 
 ### 運用受け入れ残件
@@ -21,12 +21,18 @@
 3. DiscordテストWebhookを設定画面から登録し、LINEはSupabase Function secret`LINE_CHANNEL_ACCESS_TOKEN`と送信先IDを設定して、dispatcherの実配送・delivery記録を確認する。
 4. Supabase側で利用可能なWAF／Rate Limitingを確認し、本番ポリシーを適用する。Postgres RPC内に送信元IPを推測する制限は追加しない。
 
-### 次のコード作業
+### 外部環境依存の残件
 
-1. フェーズ8・9の3マイグレーションをクラウドDBへ1回で反映し、全6 pgTAPファイル・111 assertionsを実Postgresで実行する。
-2. `EXTERNAL_ACCOUNT_HMAC_KEY`と`ASSISTANT_INTERNAL_KEY`を生成してSupabase Function secretへ設定する。LINE／Discordの実資格情報は下記運用受け入れで設定し、リポジトリや`VITE_*`へ入れない。
-3. `event-assistant`、`line-assistant-webhook`、`discord-assistant-webhook`をまとめてデプロイし、未署名401、内部secretなし401、無効入力400、既存dispatcher非回帰を確認する。
-4. クラウドDB／Edge Functionの自動検証後にGitHubへpushし、Netlifyを1回だけ更新してProduction build、Mobile／Desktop、console errorを確認する。
+1. LINE Messaging APIとDiscord Applicationの本番資格情報をSupabase secretsへ登録し、実アカウントで署名付きWebhookをE2E確認する。
+2. 実スマートフォン、実Sentry DSN、実通知先、Supabase WAF／Rate Limitingの運用受け入れを上記手順で実施する。
+
+## 2026-07-23 フェーズ8・9 クラウド統合
+
+- `20260723000400_payment_handoff.sql`、`20260723000500_notification_lifecycle.sql`、`20260723000600_external_account_linking.sql`をリンク済みクラウドDBへ1回で反映した。
+- pgTAPの基盤テストに以前から存在したplanの1件不足を修正した。実際の構成は基盤28、ワークフロー10、権限12、支払い11、通知18、外部連携33の計112件で、全6ファイルが実Postgres上で成功した。
+- `EXTERNAL_ACCOUNT_HMAC_KEY`と`ASSISTANT_INTERNAL_KEY`を暗号乱数で生成してSupabase secretsへ設定した。値は標準出力、文書、リポジトリへ保存していない。
+- `event-assistant`、`line-assistant-webhook`、`discord-assistant-webhook`を本番へデプロイし、3関数ともACTIVE、`verify_jwt=false`を確認した。内部鍵なし401、正しい内部鍵＋未知イベント404、LINE／Discordの未署名リクエスト401を本番URLで確認した。
+- 統合後にVitest 111件、PGlite 10マイグレーション、Playwright Desktop／Mobile 20件、Production build、Lighthouse Desktop 1.00／Mobile 0.97、`git diff --check`が成功した。
 
 ## 2026-07-23 フェーズ1 Google認証の完了
 
@@ -105,7 +111,7 @@
 - `scripts/validate-backend.mjs`の参加者操作時に、幹事の認証状態が残ったままになっていた検証上の問題を修正した。参加者操作では認証ユーザーを外し、デバイストークンだけで本人確認する。
 - Docker不要の検証へ、他の参加者による支出編集・削除・確定、自分が対象外の負担額変更、別の幹事によるイベント確定・解除・設定変更・メンバー削除が拒否されることを追加した。
 - 実Postgres向けに`supabase/tests/database/003_authorization_matrix.test.sql`を追加した。上記に加え、イベントをまたぐ支出編集・削除と、anonによるテーブル直接参照の拒否を含む12項目を検証する。
-- 停止中だったSupabase `Warikan`プロジェクトをManagement APIで復旧し、2026-07-23に実Postgres上でpgTAP 49件(基盤27、ワークフロー契約10、権限12)がすべて成功した。テストSQLはトランザクション末尾で`rollback`するため、テストデータは残らない。
+- 停止中だったSupabase `Warikan`プロジェクトをManagement APIで復旧し、2026-07-23に実Postgres上でpgTAP 50件(基盤28、ワークフロー契約10、権限12)がすべて成功した。テストSQLはトランザクション末尾で`rollback`するため、テストデータは残らない。
 - クラウドにはpgTAPが未導入だったため、`extensions`スキーマへ拡張を導入した。このPCにはDockerが無く、`supabase test db --linked`はリモート接続後のテストランナー起動時にDockerを要求するため、CLIの一時ログインロールとIPv4 poolerを使い、同じ3本のSQLをNode Postgresクライアントから直接実行した。
 - 匿名参加者のテーブル直接参照は、RLSで0件になる前にテーブル権限で`42501 permission denied`となる。権限テストはこの強い拒否を期待値として検証する。
 

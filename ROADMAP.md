@@ -12,7 +12,7 @@
 - 「未解決の設計判断」セクションに列挙した項目は、着手前に必ず決定してからコードを書くこと。決定した内容は本書または`HANDOFF.md`に追記すること。
 - 末尾の「バックログ」は着手承認待ちの機能。フェーズ番号がついていないものはユーザーの明示的な指示があるまで着手しないこと。
 
-**2026-07-23総括**: コードで完結するフェーズ0〜9とバックログ6.1〜6.3は実装済み。独立した「支払い・受け取り」導線をフェーズ8、LINE／Discordイベントアシスタントをフェーズ9として実装した。フェーズ8・9のクラウドDB／Edge Function／Netlify反映はデプロイ回数を抑えるため1回の統合チェックポイントにまとめる。従来の外部環境依存残件（実機PWA・オフライン復帰、実Sentryイベント、実Discord／LINE配送、Supabase WAF／Rate Limiting）は`HANDOFF.md`で別管理し、推測で完了扱いにしない。
+**2026-07-23総括**: コードで完結するフェーズ0〜9とバックログ6.1〜6.3は実装済み。独立した「支払い・受け取り」導線をフェーズ8、LINE／Discordイベントアシスタントをフェーズ9として実装した。フェーズ8・9の3マイグレーションと3 Edge Functionはデプロイ回数を抑えた統合チェックポイントでクラウドへ反映済み。従来の外部環境依存残件（実機PWA・オフライン復帰、実Sentryイベント、実Discord／LINE配送、Supabase WAF／Rate Limiting）は`HANDOFF.md`で別管理し、推測で完了扱いにしない。
 
 ---
 
@@ -127,7 +127,7 @@ export const memberDisplayName = (
 
 ### 2.3 バックエンド(Supabase)の実装状況
 
-Postgresマイグレーション4本が実装済み。
+Postgresマイグレーション10本が実装済み。下表は初期バックエンドを構成した先頭4本で、以降の共有参加、通知、支払い、外部アカウント連携マイグレーションは各フェーズの実装状況に記録する。
 
 | ファイル | 行数 | 内容 |
 |---|---|---|
@@ -154,12 +154,12 @@ Postgresマイグレーション4本が実装済み。
 
 ### 2.4 バックエンド検証状況(重要なギャップ)
 
-- `npm run backend:validate`(`scripts/validate-backend.mjs`、`@electric-sql/pglite`使用)は**成功する**。マイグレーション3〜4本がPGlite上で実行でき、主要フローが動作することは確認済み。
-- しかし、この検証は`auth.uid()`・RLS・ロールを簡易モックしたものであり(スクリプト内で`auth`スキーマと`anon`/`authenticated`/`service_role`ロールを手動で再現している)、**実Postgres上でのRLS強制は一度も検証されていない**。
-- `supabase/tests/database/001_backend_foundation.test.sql` / `002_workflow_contract.test.sql` / `003_authorization_matrix.test.sql` にpgTAPテスト(合計49アサーション)が存在する。
-- 2026-07-23、リンク済みクラウドSupabase `nrixujdkgvexnnqfoned` の実Postgres上で49件すべて成功した。停止中だったプロジェクトを復旧し、pgTAPを`extensions`スキーマへ導入した上で、CLIの一時ログインロールから`postgres`へ切り替えて3ファイルを実行した。
+- `npm run backend:validate`(`scripts/validate-backend.mjs`、`@electric-sql/pglite`使用)は**成功する**。全10マイグレーションをPGlite上で実行し、主要フローを確認する。
+- PGlite検証は`auth.uid()`・RLS・ロールを簡易モックするため、それ単独ではRLS強制の証明にならない。RLSと実ロールの受け入れは下記のクラウドpgTAPで別途検証する。
+- `supabase/tests/database/001_backend_foundation.test.sql` / `002_workflow_contract.test.sql` / `003_authorization_matrix.test.sql` にpgTAPテスト(合計50アサーション)が存在する。
+- 2026-07-23、リンク済みクラウドSupabase `nrixujdkgvexnnqfoned` の実Postgres上で50件すべて成功した。停止中だったプロジェクトを復旧し、pgTAPを`extensions`スキーマへ導入した上で、CLIの一時ログインロールから`postgres`へ切り替えて3ファイルを実行した。
 - このPCにはDockerが無いため、`supabase test db --linked`はリモート接続後のテストランナー起動時にDocker要件で停止する。今回は同じSQLファイルをNode Postgresクライアントから直接実行して受け入れ条件を確認した。
-- 結論: **フェーズ0の実Postgres権限検証は完了済み**。今後RPCまたはRLSを変更した場合は、同じ49件を実Postgresでも再実行すること。
+- 結論: **フェーズ0の実Postgres権限検証は完了済み**。今後RPCまたはRLSを変更した場合は、同じ50件を実Postgresでも再実行すること。
 
 ### 2.5 通知連携(LINE/Discord)の実装状況
 
@@ -232,7 +232,7 @@ Postgresマイグレーション4本が実装済み。
 **背景**: 現状の検証はPGlite(auth/RLSを簡易モック)のみで、実Postgres上でのRLS強制は未検証。ここが崩れていると、以降のフェーズで「動いているつもり」のまま積み上げることになる。
 
 **タスク**:
-1. Docker Desktopを導入するか、クラウドSupabaseプロジェクト(既に`nrixujdkgvexnnqfoned`が存在する、HANDOFF.md参照)上で`supabase test db`を実行し、pgTAP 27件を実Postgresで通す。
+1. Docker Desktopを導入するか、クラウドSupabaseプロジェクト(既に`nrixujdkgvexnnqfoned`が存在する、HANDOFF.md参照)上で`supabase test db`を実行し、pgTAP 28件を実Postgresで通す。
 2. 4節-4で挙げた権限マトリクス(仕様書2節「権限マトリクス」表)と、RLSポリシー23個+RPC内部の`require_organizer`/`require_member`/`require_actor`チェックの対応関係を突き合わせ、以下を必ずpgTATケースとして持つこと(存在しなければ追加):
    - 幹事以外が`finalize_event`/`unfinalize_event`/`organizer_update_event`/`organizer_remove_member`を呼べないこと
    - 支払者本人以外が対象支出を`update_expense`/`delete_expense`できないこと
@@ -242,7 +242,7 @@ Postgresマイグレーション4本が実装済み。
 
 **受け入れ条件**: `npm run backend:test`(またはDocker経由の`supabase test db`)が実Postgres上で全件成功する。4節-4の対応関係が文書化されている。
 
-**完了実績**: 実Postgres上でpgTAP 49件が成功した。権限マトリクスとRLS/RPCの対応関係は`HANDOFF.md`の「フェーズ0 権限検証の完了」へ記録済み。
+**完了実績**: 実Postgres上でpgTAP 50件が成功した。権限マトリクスとRLS/RPCの対応関係は`HANDOFF.md`の「フェーズ0 権限検証の完了」へ記録済み。
 
 ---
 
@@ -454,8 +454,8 @@ Postgresマイグレーション4本が実装済み。
 **実装状況 (2026-07-23)**:
 
 - 独立した`PaymentView`、参加者ごとのPayPay ID／現金設定、精算ごとの外部請求リンク、支払者／受取者／幹事の役割別操作、対象精算deep linkを実装した。
-- 受取方法テーブルとactor検証RPC、PayPay ID／公式HTTPSホスト検証、監査ログ、direct table access拒否をマイグレーションとpgTAPへ追加した。PGliteでは8マイグレーションと主要RPCフローを検証済み。実PostgresでのpgTAPはフェーズ9のマイグレーションとまとめてクラウド反映後に実行する。
-- Vitest 83件、Production build、Playwright Desktop／Mobile 18件、`git diff --check`が成功した。クラウドDBとNetlifyへの反映はデプロイ回数を抑えるためフェーズ9の検証済みチェックポイントまで保留する。
+- 受取方法テーブルとactor検証RPC、PayPay ID／公式HTTPSホスト検証、監査ログ、direct table access拒否をマイグレーションとpgTAPへ追加した。PGliteでは8マイグレーションと主要RPCフローを検証し、フェーズ9とまとめて実Postgresへ反映・検証済み。
+- Vitest 83件、Production build、Playwright Desktop／Mobile 18件、`git diff --check`が成功した。クラウドDBとNetlifyへの反映はフェーズ9の統合チェックポイントで実施した。
 
 ---
 
@@ -495,7 +495,8 @@ Postgresマイグレーション4本が実装済み。
 - LINE Webhookは公式仕様どおり生bodyのHMAC-SHA256、安定した`webhookEventId`、元timestampを検証する。Discord Interactionは公式仕様どおりEd25519で`X-Signature-Timestamp + raw body`を検証し、5分を超えるtimestampを拒否、PINGへPONG、応答をephemeralにする。
 - LINE／Discord共通でprovider event IDのリプレイ防止と、HMAC化した外部アカウント単位の5分10回制限を追加した。紐付け後の状況照会、支払い報告、受取確認はservice role限定RPCから本人の支払者／受取者関係を再検証し、幹事権限を継承しない。
 - 個人名をdeep linkやクエリへ含める案は採用せず、share tokenとopaqueなsettlement UUIDだけを使用する。
-- Vitest 111件、PGlite 10マイグレーションと連携／通知／リプレイ／認可フロー、Production build、Playwright Desktop／Mobile 20件、`git diff --check`が成功した。pgTAPは全6ファイル・111 assertionsへ拡張済みで、フェーズ8・9をまとめてクラウドDBへ反映後に実Postgresで実行する。
+- Vitest 111件、PGlite 10マイグレーションと連携／通知／リプレイ／認可フロー、Production build、Playwright Desktop／Mobile 20件、`git diff --check`が成功した。pgTAPは全6ファイル・112 assertionsへ拡張し、2026-07-23にフェーズ8・9の3マイグレーションをまとめて実Postgresへ反映して112件すべて成功した。
+- `EXTERNAL_ACCOUNT_HMAC_KEY`と`ASSISTANT_INTERNAL_KEY`はランダム生成してSupabase secretsへ登録し、値を端末出力・ファイル・Gitへ残していない。`event-assistant`、`line-assistant-webhook`、`discord-assistant-webhook`は`verify_jwt=false`で本番ACTIVE。内部鍵なし401、正しい内部鍵と未知イベント404、LINE／Discord未署名401を本番URLで確認した。
 
 ---
 
