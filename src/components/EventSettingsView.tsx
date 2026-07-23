@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 
 import type { EventDraft, Expense, Member, WarikanEvent } from '../domain/types'
-import type { IntegrationProvider, NotificationIntegration } from '../backend/types'
+import type { ClaimInvitation, IntegrationProvider, NotificationIntegration } from '../backend/types'
+import { buildClaimDeepLink } from '../backend/sharedEventSession'
 import { nextAvailableMemberName, validateDiscordWebhookUrl, validateLineDestination, validateMemberName } from '../lib/validation'
 import { INTEGRATION_TEST_MESSAGE } from '../notifications/adapters'
 import { EventHeader } from './EventHeader'
@@ -9,11 +10,12 @@ import { memberPillStyle } from './ui'
 
 interface EventSettingsViewProps {
   event: WarikanEvent
-  members: Member[]
+  members: Array<Member & { isClaimed?: boolean }>
   expenses: Expense[]
   onSave: (draft: EventDraft) => void | Promise<void>
   onAddMember: (name: string) => void | Promise<void>
   onRemoveMember: (memberId: string) => void | Promise<void>
+  onIssueClaimToken?: (memberId: string) => Promise<ClaimInvitation>
   onRegenerateShareToken?: () => void | Promise<void>
   onListNotificationIntegrations?: () => Promise<NotificationIntegration[]>
   onSaveNotificationIntegration?: (provider: IntegrationProvider, destination: string) => Promise<NotificationIntegration>
@@ -23,7 +25,8 @@ interface EventSettingsViewProps {
   onOpenDashboard: () => void
   onOpenSettlements: () => void
   onOpenPayment: () => void
-  onReset: () => void
+  cloudEvent?: boolean
+  onReset: () => void | Promise<void>
 }
 
 export function EventSettingsView({
@@ -33,6 +36,7 @@ export function EventSettingsView({
   onSave,
   onAddMember,
   onRemoveMember,
+  onIssueClaimToken,
   onRegenerateShareToken,
   onListNotificationIntegrations,
   onSaveNotificationIntegration,
@@ -42,6 +46,7 @@ export function EventSettingsView({
   onOpenDashboard,
   onOpenSettlements,
   onOpenPayment,
+  cloudEvent = false,
   onReset,
 }: EventSettingsViewProps) {
   const [title, setTitle] = useState(event.title)
@@ -53,11 +58,16 @@ export function EventSettingsView({
   const [message, setMessage] = useState('')
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [confirmingShareTokenRotation, setConfirmingShareTokenRotation] = useState(false)
+  const [claimInvitations, setClaimInvitations] = useState<Record<string, ClaimInvitation & { url: string }>>({})
+  const [claimBusyMemberId, setClaimBusyMemberId] = useState<string | null>(null)
+  const [claimCopyState, setClaimCopyState] = useState<Record<string, 'done' | 'error'>>({})
   const [integrations, setIntegrations] = useState<NotificationIntegration[]>([])
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState('')
   const [lineDestination, setLineDestination] = useState('')
   const [integrationBusy, setIntegrationBusy] = useState<IntegrationProvider | null>(null)
   const [testPrompt, setTestPrompt] = useState<NotificationIntegration | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
   const [busy, setBusy] = useState(false)
 
   const saveEvent = async (submitEvent: FormEvent) => {
@@ -129,6 +139,49 @@ export function EventSettingsView({
     }
   }
 
+  const copyClaimInvitation = async (memberId: string, url: string) => {
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard API is unavailable')
+      await navigator.clipboard.writeText(url)
+      setClaimCopyState((current) => ({ ...current, [memberId]: 'done' }))
+      setMessage('本人確認用URLをコピーしました。')
+    } catch {
+      setClaimCopyState((current) => ({ ...current, [memberId]: 'error' }))
+      setMessage('URLをコピーできませんでした。ブラウザのクリップボード権限を確認してください。')
+    }
+  }
+
+  const issueClaimInvitation = async (member: Member) => {
+    if (!onIssueClaimToken) return
+    setClaimBusyMemberId(member.id)
+    try {
+      const invitation = await onIssueClaimToken(member.id)
+      const url = new URL(
+        buildClaimDeepLink(event.shareToken, invitation.claimToken),
+        window.location.origin,
+      ).toString()
+      setClaimInvitations((current) => ({ ...current, [member.id]: { ...invitation, url } }))
+      setClaimCopyState((current) => {
+        const next = { ...current }
+        delete next[member.id]
+        return next
+      })
+      try {
+        if (!navigator.clipboard) throw new Error('Clipboard API is unavailable')
+        await navigator.clipboard.writeText(url)
+        setClaimCopyState((current) => ({ ...current, [member.id]: 'done' }))
+        setMessage(`${member.name}さんの本人確認用URLを発行し、コピーしました。`)
+      } catch {
+        setClaimCopyState((current) => ({ ...current, [member.id]: 'error' }))
+        setMessage(`${member.name}さんのURLを発行しました。下のボタンからコピーしてください。`)
+      }
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : '本人確認用URLを発行できませんでした。')
+    } finally {
+      setClaimBusyMemberId(null)
+    }
+  }
+
   useEffect(() => {
     if (!onListNotificationIntegrations) return
     let active = true
@@ -191,6 +244,17 @@ export function EventSettingsView({
     }
   }
 
+  const deleteEvent = async () => {
+    setDeleteBusy(true)
+    setDeleteError('')
+    try {
+      await onReset()
+    } catch (cause) {
+      setDeleteError(cause instanceof Error ? cause.message : 'イベントを削除できませんでした。時間をおいて再度お試しください。')
+      setDeleteBusy(false)
+    }
+  }
+
   return (
     <div className="app-shell event-settings-page">
       <EventHeader
@@ -250,7 +314,15 @@ export function EventSettingsView({
                 return (
                   <article key={member.id}>
                     <span className="settings-member-name" style={memberPillStyle(index)}>{member.name}</span>
-                    <small>{member.isOrganizer ? '幹事' : isReferenced ? '支出に登録済み' : '幹事が代理登録'}</small>
+                    <small>
+                      {member.isOrganizer
+                        ? '幹事'
+                        : member.isClaimed === false
+                          ? '代理登録・本人確認待ち'
+                          : member.isClaimed === true
+                            ? '本人確認済み'
+                            : isReferenced ? '支出に登録済み' : '幹事が代理登録'}
+                    </small>
                     {!member.isOrganizer && <button type="button" disabled={cannotRemove || busy} title={isReferenced ? '支出に関係する参加者は削除できません' : undefined} onClick={() => void removeMember(member)}>削除</button>}
                   </article>
                 )
@@ -262,10 +334,72 @@ export function EventSettingsView({
               <button type="submit" className="button button--outline" disabled={busy || event.status === 'finalized' || members.length >= 50}>参加者を追加</button>
             </form>
 
-            <div className="claim-link-placeholder">
-              <div><strong>本人確認用の招待URL</strong><p>代理登録した人が自分の名前を引き継ぐためのURLです。</p></div>
-              <button type="button" disabled>URLを発行（準備中）</button>
-            </div>
+            {onIssueClaimToken && (
+              <div className="claim-invitation-panel">
+                <div className="claim-invitation-panel__heading">
+                  <strong>本人確認用の招待URL</strong>
+                  <p>代理登録した人が自分の名前を引き継ぐための、7日間・1回限りのURLです。</p>
+                </div>
+                {members.some((member) => !member.isOrganizer && member.isClaimed === false) ? (
+                  <div className="claim-invitation-list">
+                    {members
+                      .filter((member) => !member.isOrganizer && member.isClaimed === false)
+                      .map((member) => {
+                        const invitation = claimInvitations[member.id]
+                        const copyState = claimCopyState[member.id]
+                        const expiresAt = invitation
+                          ? new Intl.DateTimeFormat('ja-JP', {
+                              year: 'numeric',
+                              month: 'numeric',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            }).format(new Date(invitation.expiresAt))
+                          : null
+                        return (
+                          <article key={member.id}>
+                            <div>
+                              <strong>{member.name}</strong>
+                              <small>
+                                {expiresAt
+                                  ? `有効期限：${expiresAt}`
+                                  : '本人確認を待っています'}
+                              </small>
+                            </div>
+                            <div className="claim-invitation-list__actions">
+                              <button
+                                type="button"
+                                disabled={claimBusyMemberId !== null}
+                                aria-label={`${member.name}さんの本人確認URLを${invitation ? '再発行' : '発行'}してコピー`}
+                                onClick={() => void issueClaimInvitation(member)}
+                              >
+                                {claimBusyMemberId === member.id
+                                  ? '発行中…'
+                                  : invitation ? '再発行してコピー' : '発行してコピー'}
+                              </button>
+                              {invitation && (
+                                <button
+                                  type="button"
+                                  className="text-button"
+                                  disabled={claimBusyMemberId !== null}
+                                  onClick={() => void copyClaimInvitation(member.id, invitation.url)}
+                                >
+                                  {copyState === 'done'
+                                    ? 'コピー済み'
+                                    : copyState === 'error' ? 'コピーを再試行' : 'もう一度コピー'}
+                                </button>
+                              )}
+                            </div>
+                            {invitation && <p>再発行すると、先に発行したURLは直ちに無効になります。</p>}
+                          </article>
+                        )
+                      })}
+                  </div>
+                ) : (
+                  <p className="claim-invitation-panel__empty">本人確認待ちの代理参加者はいません。</p>
+                )}
+              </div>
+            )}
           </section>
         </div>
 
@@ -364,8 +498,20 @@ export function EventSettingsView({
         <section className="settings-card event-delete-card" aria-labelledby="event-delete-heading">
           <div className="settings-card__heading">
             <span aria-hidden="true">削</span>
-            <div><h3 id="event-delete-heading">イベントを削除</h3><p>この端末からイベントデータを削除して、作成画面へ戻ります</p></div>
+            <div>
+              <h3 id="event-delete-heading">イベントを削除</h3>
+              <p>
+                {cloudEvent
+                  ? 'クラウド上の全イベントデータを削除して、作成画面へ戻ります'
+                  : 'この端末のイベントデータだけを削除して、作成画面へ戻ります'}
+              </p>
+            </div>
           </div>
+          <p>
+            {cloudEvent
+              ? 'この操作は取り消せません。参加者、支出、精算、PayPay ID、通知設定を含む全データをクラウドから削除します。'
+              : 'クラウド上のイベントには影響しません。この端末に保存したデータだけを削除します。'}
+          </p>
           <p>削除を確認するため、イベント名「<strong>{event.title}</strong>」を入力してください。</p>
           <label className="field">
             <span className="field__label">イベント名（プロジェクト名）</span>
@@ -379,11 +525,14 @@ export function EventSettingsView({
           <button
             type="button"
             className="button button--danger"
-            disabled={deleteConfirmation !== event.title}
-            onClick={onReset}
+            disabled={deleteConfirmation !== event.title || deleteBusy}
+            onClick={() => void deleteEvent()}
           >
-            イベントを削除
+            {deleteBusy
+              ? '削除中…'
+              : cloudEvent ? 'クラウドから完全に削除' : 'この端末から削除'}
           </button>
+          {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
         </section>
       </main>
     </div>

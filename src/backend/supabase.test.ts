@@ -34,6 +34,60 @@ describe('share URL rotation', () => {
   })
 })
 
+describe('event deletion', () => {
+  it('uses the authenticated organizer RPC and does not hide a backend rejection', async () => {
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: 'ORGANIZER_REQUIRED' } })
+    const backend = createWarikanBackend(
+      { url: 'https://example.supabase.co', publishableKey: 'test-key' },
+      { rpc } as unknown as SupabaseClient,
+    )
+
+    await expect(backend.organizerDeleteEvent('event-a')).resolves.toBeUndefined()
+    await expect(backend.organizerDeleteEvent('event-b')).rejects.toThrow('ORGANIZER_REQUIRED')
+    expect(rpc.mock.calls).toEqual([
+      ['organizer_delete_event', { p_event_id: 'event-a' }],
+      ['organizer_delete_event', { p_event_id: 'event-b' }],
+    ])
+  })
+})
+
+describe('claim invitation handoff', () => {
+  it('issues a seven-day one-time invitation through the authenticated organizer RPC', async () => {
+    const invitation = {
+      memberId: 'member-a',
+      claimToken: 'claim-token',
+      expiresAt: '2026-07-31T00:00:00Z',
+    }
+    const rpc = vi.fn().mockResolvedValue({ data: invitation, error: null })
+    const backend = createWarikanBackend(
+      { url: 'https://example.supabase.co', publishableKey: 'test-key' },
+      { rpc } as unknown as SupabaseClient,
+    )
+
+    await expect(backend.organizerIssueClaimToken('event-a', 'member-a')).resolves.toBe(invitation)
+    expect(rpc).toHaveBeenCalledWith('organizer_issue_claim_token', {
+      p_event_id: 'event-a',
+      p_member_id: 'member-a',
+    })
+  })
+
+  it('does not hide the backend rejection for a claimed or unrelated member', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: 'MEMBER_NOT_CLAIMABLE' },
+    })
+    const backend = createWarikanBackend(
+      { url: 'https://example.supabase.co', publishableKey: 'test-key' },
+      { rpc } as unknown as SupabaseClient,
+    )
+
+    await expect(backend.organizerIssueClaimToken('event-a', 'claimed-member'))
+      .rejects.toThrow('MEMBER_NOT_CLAIMABLE')
+  })
+})
+
 describe('notification integration settings', () => {
   it('uses the authenticated Edge Function without exposing saved destinations', async () => {
     const integration = {
@@ -98,6 +152,7 @@ describe('payment handoff backend', () => {
       .mockResolvedValueOnce({ data: paymentState, error: null })
       .mockResolvedValueOnce({ data: paymentState.profiles[0], error: null })
       .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: null, error: null })
     const backend = createWarikanBackend(
       { url: 'https://example.supabase.co', publishableKey: 'test-key' },
       { rpc } as unknown as SupabaseClient,
@@ -114,6 +169,7 @@ describe('payment handoff backend', () => {
       'settlement-a',
       'https://paypay.ne.jp/request/example',
     )).resolves.toBeUndefined()
+    await expect(backend.deletePaymentProfile('share-token', 'device-token')).resolves.toBeUndefined()
 
     expect(rpc.mock.calls).toEqual([
       ['get_payment_state', {
@@ -131,6 +187,10 @@ describe('payment handoff backend', () => {
         p_device_token: 'device-token',
         p_settlement_id: 'settlement-a',
         p_paypay_request_url: 'https://paypay.ne.jp/request/example',
+      }],
+      ['delete_payment_profile', {
+        p_share_token: 'share-token',
+        p_device_token: 'device-token',
       }],
     ])
   })

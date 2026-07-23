@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import type { Member } from '../domain/types'
+import './DebugPerspectiveSwitcher.css'
 
 interface DebugPerspectiveSwitcherProps {
   members: Member[]

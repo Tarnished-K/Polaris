@@ -14,6 +14,15 @@ test('renders the four-person demo without horizontal overflow', async ({ page }
   expect(overflow).toBe(false)
 })
 
+test('does not render development-only perspective and reset controls in production', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '4人・2泊3日・全件金額指定テンプレート' }).click()
+
+  await expect(page.getByLabel('デバッグ用の視点切り替え')).toHaveCount(0)
+  await expect(page.getByText('テスト視点')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '最初から', exact: true })).toHaveCount(0)
+})
+
 test('navigates the demo dashboard and settlement views', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '4人・2泊3日・全件金額指定テンプレート' }).click()

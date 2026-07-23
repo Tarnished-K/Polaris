@@ -19,6 +19,10 @@ describe('validateMemberName', () => {
   it('rejects blank names', () => {
     expect(validateMemberName('  ').valid).toBe(false)
   })
+  it('rejects oversized names and bidirectional control characters', () => {
+    expect(validateMemberName('名'.repeat(51)).valid).toBe(false)
+    expect(validateMemberName('山田\u202eabc').valid).toBe(false)
+  })
 })
 
 describe('nextAvailableMemberName', () => {
@@ -44,8 +48,10 @@ describe('payment handoff validation', () => {
     expect(validatePayPayRequestUrl('https://paypay.ne.jp/request/example').valid).toBe(true)
     expect(validatePayPayRequestUrl('https://qr.paypay.ne.jp/example').valid).toBe(true)
     expect(validatePayPayRequestUrl('http://paypay.ne.jp/example').valid).toBe(false)
+    expect(validatePayPayRequestUrl('https://merchant.paypay.ne.jp/request/example').valid).toBe(false)
     expect(validatePayPayRequestUrl('https://paypay.ne.jp.evil.example/request').valid).toBe(false)
     expect(validatePayPayRequestUrl('https://user@paypay.ne.jp/request').valid).toBe(false)
+    expect(validatePayPayRequestUrl('https://paypay.ne.jp:443/request').valid).toBe(false)
   })
 })
 

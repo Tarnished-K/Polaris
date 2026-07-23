@@ -1,6 +1,6 @@
-import type { ErrorEvent, EventHint } from '@sentry/react'
+import type { Breadcrumb, ErrorEvent, EventHint } from '@sentry/react'
 
-const sensitiveKey = /(?:name|member|participant|token|secret|password|authorization|cookie|webhook|destination|externalSpace)/i
+const sensitiveKey = /(?:name|member|participant|token|secret|password|authorization|cookie|webhook|destination|externalSpace|paypay)/i
 type SentryModule = typeof import('@sentry/react')
 type SentryInitOptions = Parameters<SentryModule['init']>[0]
 type BeforeSendTransaction = NonNullable<SentryInitOptions['beforeSendTransaction']>
@@ -11,7 +11,18 @@ let earlyListenersAttached = false
 export function redactSensitiveText(value: string): string {
   return value
     .replace(/\/e\/[A-Za-z0-9_-]+/g, '/e/[REDACTED]')
-    .replace(/([?&](?:claim|token|deviceToken)=)[^&#\s]+/gi, '$1[REDACTED]')
+    .replace(
+      /([?&](?:claim|token|deviceToken|p?_?paypay(?:%20|_|-)?(?:id|request(?:%20|_|-)?(?:url|link)))=)[^&#\s]+/gi,
+      '$1[REDACTED]',
+    )
+    .replace(
+      /((?:"?p?_?paypay(?:_?id|_?request_?(?:url|link))"?|PayPay\s+(?:ID|request\s+(?:URL|link)))\s*(?::|=|=>)\s*["']?)[^,;\s}"'&]+/gi,
+      '$1[REDACTED]',
+    )
+    .replace(
+      /(https:\/\/(?:[a-z0-9-]+\.)*paypay\.ne\.jp)(?:\/[^\s"'<>]*)?/gi,
+      '$1/[REDACTED]',
+    )
     .replace(/https:\/\/(?:discord|discordapp)\.com\/api\/webhooks\/[^\s"'<>]+/gi, 'https://discord.com/api/webhooks/[REDACTED]')
     .replace(/Bearer\s+[^\s]+/gi, 'Bearer [REDACTED]')
 }
@@ -32,6 +43,10 @@ export function scrubSentryEvent(event: ErrorEvent, _hint?: EventHint): ErrorEve
 
 export function scrubSentryTransaction(event: TransactionEvent): TransactionEvent {
   return scrub(event) as TransactionEvent
+}
+
+export function scrubSentryBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
+  return scrub(breadcrumb) as Breadcrumb
 }
 
 function detachEarlyErrorListeners(): void {
@@ -65,6 +80,7 @@ function loadSentry(): Promise<SentryModule> | undefined {
           'localhost',
           /^https:\/\/polaris-warikan\.netlify\.app(?:\/|$)/,
         ],
+        beforeBreadcrumb: scrubSentryBreadcrumb,
         beforeSend: scrubSentryEvent,
         beforeSendTransaction: scrubSentryTransaction,
       })

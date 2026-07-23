@@ -44,6 +44,11 @@ export function buildSettlementDeepLink(shareToken: string, settlementId?: strin
   return buildSharedEventDeepLink(shareToken, 'settlement', settlementId)
 }
 
+export function buildClaimDeepLink(shareToken: string, claimToken: string): string {
+  const params = new URLSearchParams({ claim: claimToken })
+  return `/e/${shareToken}?${params.toString()}`
+}
+
 export function buildSharedEventDeepLink(
   shareToken: string,
   view?: SharedEventRoute['initialView'],

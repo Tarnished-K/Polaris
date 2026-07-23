@@ -32,6 +32,12 @@ export interface JoinEventResult {
 
 export interface ClaimMemberResult extends JoinEventResult {}
 
+export interface ClaimInvitation {
+  memberId: string
+  claimToken: string
+  expiresAt: string
+}
+
 export interface AddExpenseInput {
   shareToken: string
   deviceToken: string
@@ -94,6 +100,8 @@ export interface WarikanBackend {
   claimMember(shareToken: string, claimToken: string, deviceToken: string): Promise<ClaimMemberResult>
   organizerUpdateEvent(eventId: string, draft: EventDraft): Promise<EventState>
   organizerAddMember(eventId: string, name: string): Promise<BackendMember>
+  organizerIssueClaimToken(eventId: string, memberId: string): Promise<ClaimInvitation>
+  organizerDeleteEvent(eventId: string): Promise<void>
   organizerRemoveMember(eventId: string, memberId: string): Promise<void>
   organizerRegenerateShareToken(eventId: string): Promise<EventState>
   listNotificationIntegrations(eventId: string): Promise<NotificationIntegration[]>
@@ -106,6 +114,7 @@ export interface WarikanBackend {
     deviceToken: string | undefined,
     profile: Omit<PaymentProfile, 'memberId'>,
   ): Promise<PaymentProfile>
+  deletePaymentProfile(shareToken: string, deviceToken?: string): Promise<void>
   saveSettlementPaymentLink(
     shareToken: string,
     deviceToken: string | undefined,

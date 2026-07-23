@@ -31,6 +31,7 @@ interface PaymentViewProps {
   onOpenSettlements: () => void
   onOpenSettings: () => void
   onSaveProfile: (profile: Omit<PaymentProfile, 'memberId'>) => void | Promise<void>
+  onDeleteProfile: () => void | Promise<void>
   onSaveLink: (settlementId: string, paypayRequestUrl?: string) => void | Promise<void>
   onReportSettlement: (settlementId: string) => void | Promise<void>
   onReportSettlementItems: (settlementId: string, expenseIds: string[]) => void | Promise<void>
@@ -154,11 +155,15 @@ function ExternalAccountLinking({
 function PaymentProfileEditor({
   profile,
   disabled,
+  cloud,
   onSave,
+  onDelete,
 }: {
   profile?: PaymentProfile
   disabled?: boolean
+  cloud: boolean
   onSave: PaymentViewProps['onSaveProfile']
+  onDelete: PaymentViewProps['onDeleteProfile']
 }) {
   const [paypayId, setPaypayId] = useState(profile?.paypayId ?? '')
   const [acceptsCash, setAcceptsCash] = useState(profile?.acceptsCash ?? true)
@@ -194,12 +199,47 @@ function PaymentProfileEditor({
     }
   }
 
+  const remove = async () => {
+    if (!window.confirm('保存したPayPay IDと受取設定を削除しますか？')) return
+    setBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      await onDelete()
+      setPaypayId('')
+      setAcceptsCash(true)
+      setMessage('保存した受取設定を削除しました。')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '受取設定を削除できませんでした。')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <section className="payment-profile-card" aria-labelledby="payment-profile-heading">
       <div>
         <p className="eyebrow">受け取るときの設定</p>
         <h2 id="payment-profile-heading">あなたの受取方法</h2>
         <p>支払う相手にだけ必要な情報を表示します。銀行口座やカード情報は入力しないでください。</p>
+        {cloud ? (
+          <>
+            <p className="payment-profile-privacy">
+              未精算の支払相手だけが閲覧できます。全精算完了から30日後に自動削除され、ここからいつでも削除できます。
+            </p>
+            <details className="payment-profile-disclosure">
+              <summary>PayPay IDの保存と削除</summary>
+              <ul>
+                <li>受取方法を支払相手へ案内する目的だけで、イベント単位のクラウドDBに保存します。</li>
+                <li>閲覧できるのは本人と、未精算の支払いがある相手だけです。幹事権限だけでは閲覧できません。</li>
+                <li>この画面またはイベント削除で即時削除でき、全精算完了から30日後にも自動削除します。</li>
+                <li>IDをコピーすると、端末のクリップボードに残る場合があります。</li>
+              </ul>
+            </details>
+          </>
+        ) : (
+          <p className="payment-profile-privacy">この端末の現在のイベントだけに保持し、イベントを削除すると消去します。</p>
+        )}
       </div>
       <div className="payment-profile-card__form">
         <label>
@@ -223,9 +263,16 @@ function PaymentProfileEditor({
           />
           <span><strong>現金での受け取りも可能</strong><small>PayPayを使わない相手も精算できます</small></span>
         </label>
-        <button type="button" className="button button--secondary" onClick={() => void save()} disabled={disabled || busy}>
-          {busy ? '保存中…' : '受取方法を保存'}
-        </button>
+        <div className="payment-profile-actions">
+          <button type="button" className="button button--secondary" onClick={() => void save()} disabled={disabled || busy}>
+            {busy ? '処理中…' : '受取方法を保存'}
+          </button>
+          {profile?.paypayId && (
+            <button type="button" className="text-button text-button--danger" onClick={() => void remove()} disabled={disabled || busy}>
+              保存したPayPay IDを削除
+            </button>
+          )}
+        </div>
       </div>
       {error && <p className="form-error" role="alert">{error}</p>}
       {message && <p className="form-success" role="status">{message}</p>}
@@ -513,6 +560,7 @@ export function PaymentView({
   onOpenSettlements,
   onOpenSettings,
   onSaveProfile,
+  onDeleteProfile,
   onSaveLink,
   onReportSettlement,
   onReportSettlementItems,
@@ -611,7 +659,9 @@ export function PaymentView({
         <PaymentProfileEditor
           profile={profileMap.get(currentMemberId ?? '')}
           disabled={loading || !currentMemberId}
+          cloud={externalAccountLinkingAvailable}
           onSave={onSaveProfile}
+          onDelete={onDeleteProfile}
         />
 
         <ExternalAccountLinking

@@ -1,8 +1,10 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { CreateWizard } from './components/CreateWizard'
 const AdvanceDashboardView = lazy(() => import('./components/AdvanceDashboardView').then(({ AdvanceDashboardView }) => ({ default: AdvanceDashboardView })))
-import { DebugPerspectiveSwitcher } from './components/DebugPerspectiveSwitcher'
+const DebugPerspectiveSwitcher = import.meta.env.DEV
+  ? lazy(() => import('./components/DebugPerspectiveSwitcher').then(({ DebugPerspectiveSwitcher }) => ({ default: DebugPerspectiveSwitcher })))
+  : null
 import { ExpenseForm, type ExpenseDraftInput } from './components/ExpenseForm'
 const EventSettingsView = lazy(() => import('./components/EventSettingsView').then(({ EventSettingsView }) => ({ default: EventSettingsView })))
 import { HomeView } from './components/HomeView'
@@ -62,6 +64,8 @@ export function App() {
   const [paymentStateLoading, setPaymentStateLoading] = useState(false)
   const [paymentStateError, setPaymentStateError] = useState('')
   const [externalAccountLinks, setExternalAccountLinks] = useState<ExternalAccountLink[]>([])
+  const previousSensitiveContext = useRef('')
+  const hasSensitiveContext = useRef(false)
   const loadedAttempt = useRef<number | null>(null)
   const flushingPending = useRef(false)
   const auth = useSupabaseAuth()
@@ -104,16 +108,37 @@ export function App() {
   } = useWarikanApp()
   const organizer = Boolean(members.find((member) => member.id === currentMemberId)?.isOrganizer)
   const lazyViewFallback = <main className="app-loading" aria-live="polite">画面を読み込んでいます…</main>
+  const clearSensitiveClientState = useCallback(() => {
+    setPaymentState(EMPTY_PAYMENT_STATE)
+    setPaymentStateLoading(false)
+    setPaymentStateError('')
+    setExternalAccountLinks([])
+  }, [])
+
+  useEffect(() => {
+    const nextContext = [
+      event?.shareToken ?? '',
+      currentMemberId ?? '',
+      auth.user?.id ?? '',
+    ].join('\n')
+    if (hasSensitiveContext.current && previousSensitiveContext.current !== nextContext) {
+      clearSensitiveClientState()
+    }
+    previousSensitiveContext.current = nextContext
+    hasSensitiveContext.current = true
+  }, [auth.user?.id, clearSensitiveClientState, currentMemberId, event?.shareToken])
 
   useEffect(() => {
     if (!sharedRoute || auth.loading || loadedAttempt.current === sharedLoadAttempt) return
     loadedAttempt.current = sharedLoadAttempt
 
     if (!backend) {
+      clearSensitiveClientState()
       setSharedEntry({ phase: 'error', error: 'クラウド接続が設定されていません。' })
       return
     }
 
+    clearSensitiveClientState()
     setCloudEvent(true)
     setSharedEntry({ phase: 'loading' })
     const session = getOrCreateEventSession(window.localStorage, sharedRoute.shareToken)
@@ -139,6 +164,7 @@ export function App() {
             ),
           )
           setSharedEntry({ phase: 'ready' })
+          void backend.broadcastEventChange(sharedRoute.shareToken)
           return
         }
 
@@ -154,6 +180,7 @@ export function App() {
           setSharedEntry({ phase: 'join', remote })
         }
       } catch (cause) {
+        clearSensitiveClientState()
         setSharedEntry({
           phase: 'error',
           error: cause instanceof Error ? cause.message : '共有イベントを読み込めませんでした。',
@@ -162,10 +189,11 @@ export function App() {
     }
 
     void load()
-  }, [auth.loading, backend, loadRemoteEvent, setView, sharedLoadAttempt, sharedRoute])
+  }, [auth.loading, backend, clearSensitiveClientState, loadRemoteEvent, setView, sharedLoadAttempt, sharedRoute])
 
   const joinSharedEvent = async (name: string) => {
     if (!backend || !sharedRoute) return
+    clearSensitiveClientState()
     const session = getOrCreateEventSession(window.localStorage, sharedRoute.shareToken)
     const joined = await backend.joinEvent(sharedRoute.shareToken, session.deviceToken, name)
     saveEventMember(window.localStorage, sharedRoute.shareToken, joined.memberId)
@@ -175,6 +203,7 @@ export function App() {
     void backend.broadcastEventChange(sharedRoute.shareToken)
   }
   const createEvent = async (draft: EventDraft) => {
+    clearSensitiveClientState()
     if (!backend) {
       setCloudEvent(false)
       createLocalEvent(draft)
@@ -191,7 +220,12 @@ export function App() {
   const resetToStart = () => {
     setEditingExpenseId(null)
     setCloudEvent(false)
+    setSharedEntry({ phase: 'ready' })
+    clearSensitiveClientState()
     resetApp()
+    if (window.location.pathname.startsWith('/e/')) {
+      window.history.replaceState(null, '', '/')
+    }
   }
 
   useEffect(() => {
@@ -329,14 +363,20 @@ export function App() {
   }
 
   if (!event || view === 'create') {
+    const signOut = async () => {
+      await auth.signOut()
+      clearSensitiveClientState()
+    }
     return (
       <CreateWizard
         onCreate={createEvent}
         onLoadDemo={() => {
+          clearSensitiveClientState()
           setCloudEvent(false)
           loadLocalDemo()
         }}
         onLoadFourPersonDemo={() => {
+          clearSensitiveClientState()
           setCloudEvent(false)
           loadLocalFourPersonDemo()
         }}
@@ -344,7 +384,7 @@ export function App() {
         authLoading={auth.loading}
         userEmail={auth.user?.email ?? null}
         onGoogleSignIn={auth.signInWithGoogle}
-        onSignOut={auth.signOut}
+        onSignOut={signOut}
       />
     )
   }
@@ -459,6 +499,22 @@ export function App() {
       ],
     }))
   }
+  const deletePaymentProfile = async () => {
+    if (!currentMemberId) throw new Error('参加者を確認できません。')
+    if (cloudEvent && backend) {
+      await backend.deletePaymentProfile(event.shareToken, eventDeviceToken)
+      setPaymentState((current) => ({
+        ...current,
+        profiles: current.profiles.filter((item) => item.memberId !== currentMemberId),
+      }))
+      await backend.broadcastEventChange(event.shareToken)
+      return
+    }
+    setPaymentState((current) => ({
+      ...current,
+      profiles: current.profiles.filter((item) => item.memberId !== currentMemberId),
+    }))
+  }
   const saveSettlementPaymentLink = async (settlementId: string, paypayRequestUrl?: string) => {
     if (cloudEvent && backend) {
       await backend.saveSettlementPaymentLink(event.shareToken, eventDeviceToken, settlementId, paypayRequestUrl)
@@ -492,6 +548,9 @@ export function App() {
       await refreshRemoteEvent('settings')
     } else addMember(name)
   }
+  const issueClaimToken = cloudEvent && backend
+    ? (memberId: string) => backend.organizerIssueClaimToken(event.id, memberId)
+    : undefined
   const removeEventMember = async (memberId: string) => {
     if (cloudEvent && backend) {
       await backend.organizerRemoveMember(event.id, memberId)
@@ -509,6 +568,15 @@ export function App() {
     }
     await backend.broadcastEventChange(previousShareToken)
   } : undefined
+  const deleteEvent = async () => {
+    if (cloudEvent) {
+      if (!backend) throw new Error('クラウド接続が設定されていません。')
+      const shareToken = event.shareToken
+      await backend.organizerDeleteEvent(event.id)
+      void backend.broadcastEventChange(shareToken).catch(() => undefined)
+    }
+    resetToStart()
+  }
 
   const home = (
     <HomeView
@@ -542,9 +610,11 @@ export function App() {
       }}
     />
   )
-  const perspectiveSwitcher = (
-    <DebugPerspectiveSwitcher members={members} currentMemberId={currentMemberId} onChange={setCurrentMember} onReset={resetToStart} />
-  )
+  const perspectiveSwitcher = DebugPerspectiveSwitcher ? (
+    <Suspense fallback={null}>
+      <DebugPerspectiveSwitcher members={members} currentMemberId={currentMemberId} onChange={setCurrentMember} onReset={resetToStart} />
+    </Suspense>
+  ) : null
 
   if (view === 'expense') {
     const editingExpense = expenses.find((expense) => expense.id === editingExpenseId)
@@ -677,6 +747,7 @@ export function App() {
           onOpenSettlements={() => setView('settlement')}
           onOpenSettings={() => setView('settings')}
           onSaveProfile={savePaymentProfile}
+          onDeleteProfile={deletePaymentProfile}
           onSaveLink={saveSettlementPaymentLink}
           onReportSettlement={reportSettlement}
           onReportSettlementItems={reportSettlementItems}
@@ -751,6 +822,7 @@ export function App() {
             onSave={saveEventSettings}
             onAddMember={addEventMember}
             onRemoveMember={removeEventMember}
+            onIssueClaimToken={issueClaimToken}
             onRegenerateShareToken={regenerateShareToken}
             onListNotificationIntegrations={cloudEvent && backend ? () => backend.listNotificationIntegrations(event.id) : undefined}
             onSaveNotificationIntegration={cloudEvent && backend ? (provider, destination) => backend.saveNotificationIntegration(event.id, provider, destination) : undefined}
@@ -760,7 +832,8 @@ export function App() {
             onOpenDashboard={() => setView('dashboard')}
             onOpenSettlements={() => setView('settlement')}
             onOpenPayment={() => setView('payment')}
-            onReset={resetToStart}
+            cloudEvent={cloudEvent}
+            onReset={deleteEvent}
           />
         </Suspense>
         {perspectiveSwitcher}

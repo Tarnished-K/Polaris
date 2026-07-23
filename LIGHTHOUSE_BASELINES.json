@@ -3,28 +3,28 @@
   "profiles": {
     "desktop": {
       "performanceScore": 1,
-      "fcpMs": 404.97,
-      "lcpMs": 462.97,
+      "fcpMs": 406.37,
+      "lcpMs": 465.37,
       "cls": 0,
-      "jsTransferBytes": 138280,
-      "cssTransferBytes": 16686,
+      "jsTransferBytes": 135645,
+      "cssTransferBytes": 18157,
       "jsonTransferBytes": 0
     },
     "mobile": {
       "performanceScore": 0.97,
-      "fcpMs": 1935.58,
-      "lcpMs": 2085.58,
+      "fcpMs": 1940.27,
+      "lcpMs": 2090.27,
       "cls": 0,
-      "jsTransferBytes": 138280,
-      "cssTransferBytes": 16686,
+      "jsTransferBytes": 135645,
+      "cssTransferBytes": 18157,
       "jsonTransferBytes": 0
     }
   },
   "assets": {
-    "initialJsBytes": 486979,
-    "initialCssBytes": 85676,
-    "settingsChunkBytes": 13725,
-    "dashboardChunkBytes": 8263,
-    "settlementChunkBytes": 27718
+    "initialJsBytes": 481621,
+    "initialCssBytes": 93969,
+    "settingsChunkBytes": 17156,
+    "dashboardChunkBytes": 8251,
+    "settlementChunkBytes": 25066
   }
 }

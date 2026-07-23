@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   getOrCreateEventSession,
+  buildClaimDeepLink,
   buildPaymentDeepLink,
   buildSettlementDeepLink,
   parseSharedEventRoute,
@@ -27,6 +28,14 @@ describe('parseSharedEventRoute', () => {
       initialView: null,
       settlementId: null,
     })
+    expect(buildClaimDeepLink('share_123', 'claim_456')).toBe('/e/share_123?claim=claim_456')
+  })
+
+  it('encodes claim tokens without changing the shared event route', () => {
+    const deepLink = buildClaimDeepLink('share_123', 'claim +/? value')
+    expect(deepLink).toBe('/e/share_123?claim=claim+%2B%2F%3F+value')
+    expect(parseSharedEventRoute('/e/share_123', deepLink.slice(deepLink.indexOf('?')))?.claimToken)
+      .toBe('claim +/? value')
   })
 
   it('reads a safe payment deep link without accepting arbitrary settlement IDs', () => {

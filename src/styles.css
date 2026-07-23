@@ -950,6 +950,19 @@ p {
 .claim-link-placeholder strong { font-size: 0.78rem; }
 .claim-link-placeholder p { margin-top: 3px; color: var(--muted); font-size: 0.65rem; line-height: 1.45; }
 .claim-link-placeholder button { flex: none; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; font-size: 0.67rem; font-weight: 800; }
+.claim-invitation-panel { margin-top: 18px; padding: 14px; border: 1px dashed #d7cec4; border-radius: 12px; background: #faf8f5; }
+.claim-invitation-panel__heading strong { font-size: 0.78rem; }
+.claim-invitation-panel__heading p { margin-top: 3px; color: var(--muted); font-size: 0.65rem; line-height: 1.55; }
+.claim-invitation-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.claim-invitation-list article { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 12px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+.claim-invitation-list article > div:first-child { min-width: 0; }
+.claim-invitation-list article strong { display: block; overflow: hidden; font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
+.claim-invitation-list article small { display: block; margin-top: 3px; color: var(--muted); font-size: 0.64rem; line-height: 1.45; }
+.claim-invitation-list article > p { grid-column: 1 / -1; color: #85621e; font-size: 0.62rem; line-height: 1.45; }
+.claim-invitation-list__actions { display: flex; align-items: center; gap: 6px; }
+.claim-invitation-list__actions button { flex: none; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); font-size: 0.67rem; font-weight: 800; }
+.claim-invitation-list__actions .text-button { border-color: transparent; background: transparent; color: var(--accent-dark); }
+.claim-invitation-panel__empty { margin-top: 10px; color: var(--muted); font-size: 0.68rem; line-height: 1.5; }
 
 /* Home */
 .home-layout,
@@ -2622,102 +2635,6 @@ p {
   color: #75611e;
   font-size: 0.7rem;
   line-height: 1.55;
-}
-
-.debug-perspective {
-  position: fixed;
-  z-index: 1200;
-  left: 16px;
-  bottom: 16px;
-  max-width: calc(100vw - 32px);
-  padding: 4px;
-  border: 1px dashed var(--accent-dark);
-  border-radius: 14px;
-  background: var(--warm-canvas);
-  box-shadow: var(--shadow-md);
-  color: var(--subtle);
-}
-
-.debug-perspective__toggle {
-  display: flex;
-  min-height: 38px;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 9px 5px 6px;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-.debug-perspective__toggle > span {
-  display: inline-grid;
-  width: 27px;
-  height: 27px;
-  place-items: center;
-  border-radius: 8px;
-  background: var(--accent-dark);
-  color: var(--card);
-  font-size: 0.72rem;
-  font-weight: 900;
-}
-
-.debug-perspective__toggle strong { font-size: 0.78rem; white-space: nowrap; }
-.debug-perspective__toggle i { color: var(--muted); font-size: 0.76rem; font-style: normal; }
-.debug-perspective__toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-.debug-perspective__panel {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 8px 8px;
-}
-
-.debug-perspective__panel[hidden] { display: none; }
-.debug-perspective__panel > div { display: grid; gap: 1px; }
-.debug-perspective__panel span { font-size: 0.66rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
-.debug-perspective__panel strong { font-size: 0.76rem; white-space: nowrap; }
-.debug-perspective select {
-  min-width: 132px;
-  padding: 7px 28px 7px 9px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--card);
-  color: var(--subtle);
-  font: inherit;
-  font-size: 0.8rem;
-}
-
-.debug-perspective__reset {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 0 10px;
-  border: 1px solid var(--accent);
-  border-radius: 9px;
-  background: var(--card);
-  color: var(--accent-dark);
-  font-size: 0.74rem;
-  font-weight: 850;
-  white-space: nowrap;
-}
-
-.debug-perspective__reset:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-@media (max-width: 767px) {
-  .debug-perspective {
-    left: 10px;
-    bottom: 72px;
-  }
-  .debug-perspective__panel { flex-direction: column; align-items: stretch; }
-  .debug-perspective select { min-width: 120px; }
 }
 
 .fixed-total.is-valid {
@@ -4470,6 +4387,9 @@ p {
   .settings-card { padding: 18px; }
   .proxy-member-form { grid-template-columns: 1fr; }
   .claim-link-placeholder { align-items: flex-start; flex-direction: column; }
+  .claim-invitation-list article { grid-template-columns: 1fr; }
+  .claim-invitation-list article > p { grid-column: 1; }
+  .claim-invitation-list__actions { flex-wrap: wrap; }
 
   .home-layout,
   .settlement-layout {
@@ -4766,10 +4686,6 @@ p {
 }
 
 @media (max-width: 520px) {
-  .debug-perspective {
-    display: none;
-  }
-
   .event-header,
   .settlement-header {
     gap: 10px;
@@ -5134,6 +5050,37 @@ p {
 .payment-profile-card__form {
   display: grid;
   gap: 14px;
+}
+
+.payment-profile-privacy {
+  margin-top: 10px !important;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.payment-profile-disclosure {
+  margin-top: 12px;
+  color: var(--subtle);
+  font-size: 0.78rem;
+}
+
+.payment-profile-disclosure summary {
+  color: var(--accent-dark);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.payment-profile-disclosure ul {
+  margin: 9px 0 0;
+  padding-left: 1.2rem;
+  line-height: 1.65;
+}
+
+.payment-profile-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
 }
 
 .payment-profile-card__form > label:not(.payment-method-checkbox),

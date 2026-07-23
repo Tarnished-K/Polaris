@@ -900,6 +900,10 @@ export type Database = {
         }
         Returns: Json
       }
+      delete_payment_profile: {
+        Args: { p_device_token: string; p_share_token: string }
+        Returns: undefined
+      }
       delete_expense: {
         Args: {
           p_device_token: string
@@ -953,6 +957,10 @@ export type Database = {
       organizer_issue_claim_token: {
         Args: { p_event_id: string; p_member_id: string }
         Returns: Json
+      }
+      organizer_delete_event: {
+        Args: { p_event_id: string }
+        Returns: undefined
       }
       organizer_queue_notification: {
         Args: {

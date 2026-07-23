@@ -48,6 +48,7 @@ const callbacks = {
   onOpenSettlements: vi.fn(),
   onOpenSettings: vi.fn(),
   onSaveProfile: vi.fn(),
+  onDeleteProfile: vi.fn(),
   onSaveLink: vi.fn(),
   onReportSettlement: vi.fn(),
   onReportSettlementItems: vi.fn(),
@@ -87,6 +88,7 @@ describe('PaymentView', () => {
     expect(markup).toContain('幹事へ支払う')
     expect(markup).toContain('organizer_1')
     expect(markup).toContain('PayPay請求リンクを開く')
+    expect(markup).not.toContain('保存したPayPay IDを削除')
     expect(markup).toContain('相手への全額')
     expect(markup).toContain('イベントを選ぶ')
     expect(markup).toContain('ホテル2泊分')
@@ -105,7 +107,7 @@ describe('PaymentView', () => {
         settlements={settlements}
         paymentState={{
           currentMemberId: 'organizer',
-          profiles: [{ memberId: 'organizer', paypayId: null, acceptsCash: true }],
+          profiles: [{ memberId: 'organizer', paypayId: 'organizer_1', acceptsCash: true }],
           links: [],
         }}
       />,
@@ -113,6 +115,9 @@ describe('PaymentView', () => {
 
     expect(markup).toContain('Payerから受け取る')
     expect(markup).toContain('この相手用のPayPay請求リンク')
+    expect(markup).toContain('保存したPayPay IDを削除')
+    expect(markup).toContain('全精算完了から30日後に自動削除')
+    expect(markup).toContain('幹事権限だけでは閲覧できません')
     expect(markup).toContain('全員の支払い進捗')
     expect(markup).toContain('未払い1件を催促')
     expect(markup).toContain('連携済み')

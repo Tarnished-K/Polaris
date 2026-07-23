@@ -54,10 +54,48 @@ try {
   const members = await database.query('select id, name from public.members where event_id = $1::uuid order by created_at', [eventId])
   const payer = members.rows.find((member) => member.name === 'Participant')
   const proxy = members.rows.find((member) => member.name === 'Proxy')
+  const duplicateProxy = members.rows.find((member) => member.name === 'Proxy(1)')
   const otherParticipant = members.rows.find((member) => member.name === 'Other participant')
-  assert.ok(payer && proxy && otherParticipant)
-  assert.ok(members.rows.some((member) => member.name === 'Proxy(1)'))
+  assert.ok(payer && proxy && duplicateProxy && otherParticipant)
   assert.ok(members.rows.some((member) => member.name === 'Participant(1)'))
+
+  const firstClaimInvitation = await database.query(
+    'select public.organizer_issue_claim_token($1::uuid, $2::uuid) as invitation',
+    [eventId, duplicateProxy.id],
+  )
+  const replacementClaimInvitation = await database.query(
+    'select public.organizer_issue_claim_token($1::uuid, $2::uuid) as invitation',
+    [eventId, duplicateProxy.id],
+  )
+  assert.notEqual(
+    firstClaimInvitation.rows[0].invitation.claimToken,
+    replacementClaimInvitation.rows[0].invitation.claimToken,
+  )
+  const pendingClaimTokens = await database.query(
+    'select count(*)::integer as count from public.member_claim_tokens where member_id = $1::uuid and claimed_at is null',
+    [duplicateProxy.id],
+  )
+  assert.equal(pendingClaimTokens.rows[0].count, 1)
+  const claimDeviceToken = 'claim-device-token-that-is-at-least-thirty-two-characters'
+  await assert.rejects(
+    database.query(
+      'select public.claim_member($1, $2, $3)',
+      [shareToken, firstClaimInvitation.rows[0].invitation.claimToken, claimDeviceToken],
+    ),
+    /INVALID_CLAIM_TOKEN/,
+  )
+  const claimedMember = await database.query(
+    'select public.claim_member($1, $2, $3) as result',
+    [shareToken, replacementClaimInvitation.rows[0].invitation.claimToken, claimDeviceToken],
+  )
+  assert.equal(claimedMember.rows[0].result.memberId, duplicateProxy.id)
+  await assert.rejects(
+    database.query(
+      'select public.organizer_issue_claim_token($1::uuid, $2::uuid)',
+      [eventId, duplicateProxy.id],
+    ),
+    /MEMBER_NOT_CLAIMABLE/,
+  )
   await database.query("select set_config('request.jwt.claim.sub', '', false)")
 
   await database.query(

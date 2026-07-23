@@ -5,6 +5,10 @@ export function validateMemberName(name: string): { valid: boolean; error?: stri
   const normalized = name.trim()
   if (!normalized) return { valid: false, error: '参加者名を入力してください' }
   if (RESERVED_MEMBER_NAMES.has(normalized)) return { valid: false, error: RESERVED_MEMBER_NAME_ERROR }
+  if (normalized.length > 50) return { valid: false, error: '参加者名は50文字以内で入力してください' }
+  if (/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/u.test(normalized)) {
+    return { valid: false, error: '参加者名に制御文字は使用できません' }
+  }
   return { valid: true }
 }
 
@@ -49,10 +53,12 @@ export function validatePayPayRequestUrl(value: string): { valid: boolean; error
   if (!requestUrl) return { valid: true }
   try {
     const url = new URL(requestUrl)
-    const officialHost = url.hostname === 'paypay.ne.jp' || url.hostname.endsWith('.paypay.ne.jp')
+    const officialHost = url.hostname === 'paypay.ne.jp' || url.hostname === 'qr.paypay.ne.jp'
+    const exactAuthority = /^https:\/\/(?:paypay\.ne\.jp|qr\.paypay\.ne\.jp)(?:\/|$)/i.test(requestUrl)
     if (
       url.protocol === 'https:' &&
       officialHost &&
+      exactAuthority &&
       !url.username &&
       !url.password &&
       !url.port &&

@@ -66,12 +66,28 @@ select set_config(
 
 select matches(current_setting('test.payer_code'), '^[0-9A-F]{8}$', 'link code is eight uppercase hexadecimal characters');
 select isnt(
-  (select code_hash from public.member_link_codes where consumed_at is null),
+  (
+    select code.code_hash
+    from public.member_link_codes code
+    join public.members member on member.id = code.member_id
+    join public.events event on event.id = member.event_id
+    where event.title = '外部アカウント連携テスト'
+      and member.name = '支払う人'
+      and code.consumed_at is null
+  ),
   current_setting('test.payer_code'),
   'only a hash of the link code is stored'
 );
 select ok(
-  (select expires_at <= created_at + interval '5 minutes 1 second' from public.member_link_codes where consumed_at is null),
+  (
+    select code.expires_at <= code.created_at + interval '5 minutes 1 second'
+    from public.member_link_codes code
+    join public.members member on member.id = code.member_id
+    join public.events event on event.id = member.event_id
+    where event.title = '外部アカウント連携テスト'
+      and member.name = '支払う人'
+      and code.consumed_at is null
+  ),
   'link code expires after five minutes'
 );
 select is(
@@ -97,12 +113,28 @@ select is(
   'participant can see their linked provider without an external user ID'
 );
 select is(
-  (select external_user_hash from public.member_external_accounts where provider = 'line'),
+  (
+    select account.external_user_hash
+    from public.member_external_accounts account
+    join public.members member on member.id = account.member_id
+    join public.events event on event.id = member.event_id
+    where event.title = '外部アカウント連携テスト'
+      and member.name = '支払う人'
+      and account.provider = 'line'
+  ),
   repeat('a', 64),
   'only the Edge Function HMAC lookup hash is stored'
 );
 select is(
-  (select display_name from public.member_external_accounts where provider = 'line'),
+  (
+    select account.display_name
+    from public.member_external_accounts account
+    join public.members member on member.id = account.member_id
+    join public.events event on event.id = member.event_id
+    where event.title = '外部アカウント連携テスト'
+      and member.name = '支払う人'
+      and account.provider = 'line'
+  ),
   null,
   'external display names are not stored'
 );
@@ -138,7 +170,13 @@ select lives_ok(
     'select public.report_settlement_for_external_account(%L,%L,%L::uuid)',
     'line',
     repeat('a', 64),
-    (select id from public.settlements where amount = 5000)
+    (
+      select settlement.id
+      from public.settlements settlement
+      join public.events event on event.id = settlement.event_id
+      where event.title = '外部アカウント連携テスト'
+        and settlement.amount = 5000
+    )
   ),
   'linked payer can report their own settlement'
 );
@@ -147,7 +185,13 @@ select throws_ok(
     'select public.confirm_settlement_for_external_account(%L,%L,%L::uuid)',
     'line',
     repeat('a', 64),
-    (select id from public.settlements where amount = 5000)
+    (
+      select settlement.id
+      from public.settlements settlement
+      join public.events event on event.id = settlement.event_id
+      where event.title = '外部アカウント連携テスト'
+        and settlement.amount = 5000
+    )
   ),
   '42501',
   'RECEIVER_REQUIRED',
@@ -169,7 +213,13 @@ select lives_ok(
     'select public.confirm_settlement_for_external_account(%L,%L,%L::uuid)',
     'line',
     repeat('b', 64),
-    (select id from public.settlements where amount = 5000)
+    (
+      select settlement.id
+      from public.settlements settlement
+      join public.events event on event.id = settlement.event_id
+      where event.title = '外部アカウント連携テスト'
+        and settlement.amount = 5000
+    )
   ),
   'linked receiver can confirm their own receipt'
 );

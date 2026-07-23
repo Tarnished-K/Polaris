@@ -5,6 +5,7 @@ import type {
   AddExpenseInput,
   AddExpenseResult,
   BackendMember,
+  ClaimInvitation,
   ClaimMemberResult,
   EventState,
   ExpenseMutationInput,
@@ -197,6 +198,21 @@ export function createWarikanBackend(config: SupabaseConfig, client?: WarikanSup
       return requireData(data as BackendMember | null, error)
     },
 
+    async organizerIssueClaimToken(eventId, memberId) {
+      const { data, error } = await supabase.rpc('organizer_issue_claim_token', {
+        p_event_id: eventId,
+        p_member_id: memberId,
+      })
+      return requireData(data as ClaimInvitation | null, error)
+    },
+
+    async organizerDeleteEvent(eventId) {
+      const { error } = await supabase.rpc('organizer_delete_event', {
+        p_event_id: eventId,
+      })
+      requireSuccess(error)
+    },
+
     async organizerRemoveMember(eventId, memberId) {
       const { error } = await supabase.rpc('organizer_remove_member', {
         p_event_id: eventId,
@@ -267,6 +283,17 @@ export function createWarikanBackend(config: SupabaseConfig, client?: WarikanSup
         }),
       )
       return requireData(data as PaymentState['profiles'][number] | null, error)
+    },
+
+    async deletePaymentProfile(shareToken, deviceToken) {
+      const { error } = await supabase.rpc(
+        'delete_payment_profile',
+        allowSqlNull<'delete_payment_profile', 'p_device_token'>({
+          p_share_token: shareToken,
+          p_device_token: deviceToken ?? null,
+        }),
+      )
+      requireSuccess(error)
     },
 
     async saveSettlementPaymentLink(shareToken, deviceToken, settlementId, paypayRequestUrl) {
