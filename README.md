@@ -29,6 +29,31 @@ npm run audit:lighthouse:update
 
 毎回の詳細値はgit管理外の`lighthouse-results.json`へ出力され、CIではartifactとして7日間保存されます。`LIGHTHOUSE_BASELINES.json`を更新する場合は、差分に初回JS/CSS、設定・ダッシュボード・精算チャンク、FCP/LCP/CLSの変化が妥当な理由を残してください。
 
+## 本番デプロイ
+
+変更をまとめ、デプロイ回数を抑えて次の順で反映します。
+
+```bash
+npm test
+npm run test:e2e
+npm run audit:lighthouse
+npm run backend:validate
+
+# migrationがある場合
+npx supabase db push --linked --yes
+
+# Edge Functionを変更した場合（対象だけを指定）
+npx supabase functions deploy integration-settings --project-ref nrixujdkgvexnnqfoned
+npx supabase functions deploy notification-dispatcher --project-ref nrixujdkgvexnnqfoned
+
+# 保存済みdistではなくNetlify側でもbuildして本番反映
+npx netlify deploy --prod --dir=dist
+```
+
+本番URLは `https://polaris-warikan.netlify.app` です。GitHubへpush後は`Validate application`を確認し、必要ならActionsの`workflow_dispatch`から明示実行できます。
+
+運用上の秘密はリポジトリへ保存しません。Sentry DSNはNetlifyの`VITE_SENTRY_DSN`、通知暗号鍵とLINE Channel Access TokenはSupabase Function secretsへ設定します。Discord Webhook URLは幹事設定画面から登録するとEdge Functionで暗号化され、画面へ再表示されません。
+
 ## バックエンド
 
 Dockerなしの軽量検証:

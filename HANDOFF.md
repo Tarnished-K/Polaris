@@ -9,7 +9,15 @@
 - バックログ6.1（関係マップ）、6.2（債務マトリクス）、6.3（予約語バリデーション）は実装済み。
 - 通知は暗号化されたDiscord／LINE登録UI、outbox、dispatcherまで本番反映済み。実WebhookとLINE channel access tokenを使う外部配送だけ未確認。
 - 最終自動検証はVitest 77件、Playwright 16件、PGlite 7マイグレーション、Lighthouse Desktop 1.00／Mobile 0.97が成功。本番NetlifyはDeploy `6a61c1aa254402e0ea1eea83`。
+- 実装一式は`main`の`b37fc64`、手動CI起動対応は`6ae1d84`としてGitHubへpush済み。GitHub Actions `Validate application` run `29988948909`でunit、build、Playwright、Lighthouse、artifact upload、backend validateが全成功した。
 - 実機接続を試みたが、この実行環境のADBブリッジは接続拒否（OS error 10061）、BrowserMCPは`Transport closed`のため、物理端末テストを完了扱いにはしていない。下記「フェーズ3実機依存確認」の手順で端末接続可能時に実施する。
+
+### 運用受け入れ残件
+
+1. 異なる物理端末で共有URLを開き、PWAホーム画面追加と、オフライン支出→オンライン復帰→別端末Realtime反映を確認する。
+2. SentryプロジェクトのDSNをNetlify環境変数`VITE_SENTRY_DSN`へ設定して再ビルドし、参加者名・共有tokenがマスクされた実イベントの到達を確認する。DSNを`.env.production`やリポジトリへ保存しない。
+3. DiscordテストWebhookを設定画面から登録し、LINEはSupabase Function secret`LINE_CHANNEL_ACCESS_TOKEN`と送信先IDを設定して、dispatcherの実配送・delivery記録を確認する。
+4. Supabase側で利用可能なWAF／Rate Limitingを確認し、本番ポリシーを適用する。Postgres RPC内に送信元IPを推測する制限は追加しない。
 
 ## 2026-07-23 フェーズ1 Google認証の完了
 
