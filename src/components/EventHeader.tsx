@@ -46,10 +46,10 @@ export function EventHeader({ event, members, activeTab, onTabChange, onOpenSett
       </div>
 
       <nav className="event-section-tabs" aria-label="イベント内の画面">
-        <button type="button" className={activeTab === 'expenses' ? 'is-active' : ''} onClick={() => onTabChange('expenses')}>支出イベント</button>
-        <button type="button" className={activeTab === 'dashboard' ? 'is-active' : ''} onClick={() => onTabChange('dashboard')}>立替ダッシュボード</button>
-        <button type="button" className={activeTab === 'settlements' ? 'is-active' : ''} onClick={() => onTabChange('settlements')}>みんなの精算状況</button>
-        <button type="button" className={activeTab === 'payment' ? 'is-active' : ''} onClick={() => onTabChange('payment')}>支払い・受け取り</button>
+        <button type="button" aria-label="支出イベント" data-mobile-label="支出" className={activeTab === 'expenses' ? 'is-active' : ''} onClick={() => onTabChange('expenses')}>支出イベント</button>
+        <button type="button" aria-label="立替ダッシュボード" data-mobile-label="立替" className={activeTab === 'dashboard' ? 'is-active' : ''} onClick={() => onTabChange('dashboard')}>立替ダッシュボード</button>
+        <button type="button" aria-label="みんなの精算状況" data-mobile-label="精算" className={activeTab === 'settlements' ? 'is-active' : ''} onClick={() => onTabChange('settlements')}>みんなの精算状況</button>
+        <button type="button" aria-label="支払い・受け取り" data-mobile-label="支払" className={activeTab === 'payment' ? 'is-active' : ''} onClick={() => onTabChange('payment')}>支払い・受け取り</button>
       </nav>
 
       <div className="event-header__actions">
@@ -58,7 +58,7 @@ export function EventHeader({ event, members, activeTab, onTabChange, onOpenSett
             <span className="member-chip" style={memberPillStyle(index)} key={member.id}>{member.name}{member.isOrganizer && <span className="sr-only">（幹事）</span>}</span>
           ))}
         </div>
-        {onOpenSettings && <button type="button" className={`header-settings-button ${activeTab === 'settings' ? 'is-active' : ''}`} onClick={onOpenSettings}><span aria-hidden="true">⚙</span><b>イベント設定</b></button>}
+        {onOpenSettings && <button type="button" aria-label="イベント設定" className={`header-settings-button ${activeTab === 'settings' ? 'is-active' : ''}`} onClick={onOpenSettings}><span aria-hidden="true">⚙</span><b>イベント設定</b></button>}
         <button type="button" className="share-button" onClick={copyShareUrl}>
           <span aria-hidden="true">⧉</span>
           <b>{copyState === 'done' ? 'コピーしました' : copyState === 'error' ? 'コピーできませんでした' : '共有リンクをコピー'}</b>

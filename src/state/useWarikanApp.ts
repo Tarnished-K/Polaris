@@ -14,6 +14,7 @@ import type {
   Settlement,
   WarikanEvent,
 } from '../domain/types'
+import { nextAvailableMemberName } from '../lib/validation'
 import { CATEGORY_IDS } from '../domain/types'
 import { createRandomId, createShareToken } from '../lib/random'
 import type { EventState } from '../backend/types'
@@ -402,13 +403,13 @@ export function useWarikanApp(): WarikanAppState {
         current.event.status !== 'active' ||
         !isOrganizer(current) ||
         !trimmed ||
-        current.members.length >= 50 ||
-        current.members.some((member) => member.name === trimmed)
+        current.members.length >= 50
       ) return current
+      const availableName = nextAvailableMemberName(current.members.map((member) => member.name), trimmed)
       return {
         ...current,
         event: { ...current.event, capacity: Math.max(current.event.capacity, current.members.length + 1) },
-        members: [...current.members, { id: createRandomId(), name: trimmed }],
+        members: [...current.members, { id: createRandomId(), name: availableName }],
       }
     })
   }, [])

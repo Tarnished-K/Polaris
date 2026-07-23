@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 
 import type { EventDraft, Expense, Member, WarikanEvent } from '../domain/types'
 import type { IntegrationProvider, NotificationIntegration } from '../backend/types'
-import { validateDiscordWebhookUrl, validateLineDestination, validateMemberName } from '../lib/validation'
+import { nextAvailableMemberName, validateDiscordWebhookUrl, validateLineDestination, validateMemberName } from '../lib/validation'
 import { INTEGRATION_TEST_MESSAGE } from '../notifications/adapters'
 import { EventHeader } from './EventHeader'
 import { memberPillStyle } from './ui'
@@ -89,16 +89,13 @@ export function EventSettingsView({
       setMessage('登録できる参加者は最大50人です。')
       return
     }
-    if (members.some((member) => member.name === name)) {
-      setMessage('同じ名前の参加者がすでにいます。')
-      return
-    }
+    const availableName = nextAvailableMemberName(members.map((member) => member.name), name)
     setBusy(true)
     try {
       await onAddMember(name)
       if (members.length >= capacity) setCapacity(Math.min(50, members.length + 1))
       setNewMemberName('')
-      setMessage(`${name}さんを幹事が代理登録しました。`)
+      setMessage(`${availableName}さんを幹事が代理登録しました。`)
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : '参加者を追加できませんでした。')
     } finally {
@@ -261,7 +258,7 @@ export function EventSettingsView({
             </div>
 
             <form className="proxy-member-form" onSubmit={addMember}>
-              <label className="field"><span className="field__label">幹事が代わりに参加登録</span><input placeholder="参加者の名前" value={newMemberName} aria-invalid={message.includes('予約されています')} disabled={event.status === 'finalized'} onChange={(changeEvent) => setNewMemberName(changeEvent.target.value)} /></label>
+              <label className="field"><span className="field__label">幹事が代わりに参加登録</span><input placeholder="参加者の名前" value={newMemberName} aria-invalid={message.includes('予約されています')} disabled={event.status === 'finalized'} onChange={(changeEvent) => setNewMemberName(changeEvent.target.value)} /><small className="field-hint">同じ名前は「名前(1)」「名前(2)」として登録します。</small></label>
               <button type="submit" className="button button--outline" disabled={busy || event.status === 'finalized' || members.length >= 50}>参加者を追加</button>
             </form>
 

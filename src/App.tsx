@@ -637,7 +637,6 @@ export function App() {
           onSaveDraft={editingExpense?.status === 'draft' ? saveDraft : undefined}
           onDelete={editingExpense && (organizer || editingExpense.payerMemberId === currentMemberId) ? deleteExpense : undefined}
         />
-        {perspectiveSwitcher}
       </>
     )
   }

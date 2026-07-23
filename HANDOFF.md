@@ -6,11 +6,11 @@
 
 - フェーズ0〜2、4〜6は実装・自動検証・必要な本番反映まで完了。フェーズ3は本番URL／OAuth／クラウドイベント／Realtime／PWA配信まで確認済みで、異なる物理端末からのホーム画面追加を含む最終受け入れだけが残る。
 - フェーズ7はオフライン再送、Sentry本番受け入れ、共有URLローテーションまで実装済み。残る最終受け入れは実スマートフォンのオフライン→オンライン復帰。
-- バックログ6.1（関係マップ）、6.2（債務マトリクス）、6.3（予約語バリデーション）は実装済み。
+- バックログ6.1（関係マップ）と6.3（予約語バリデーション）は実装済み。6.2（債務マトリクス）は一度実装したが、分かりにくいため2026-07-23にUIから撤去し、関係マップへ一本化した。
 - 通知は暗号化されたDiscord／LINE登録UI、outbox、dispatcherまで本番反映済み。実WebhookとLINE channel access tokenを使う外部配送だけ未確認。
 - フェーズ8「支払い・受け取りアクションハブ」は実装・自動検証・クラウドDB反映まで完了した。支払い画面はPayPay ID・外部生成の請求リンク・現金に対応し、銀行口座とアプリ内決済は扱わない。
 - フェーズ9は精算ライフサイクル通知、未払いだけへの1日1回の催促、読み取り専用集計、5分・1回限りの外部アカウント紐付け、LINE HMAC／Discord Ed25519署名検証、リプレイ／レート制限、紐付け済み本人の支払い報告・受取確認まで実装・クラウド反映した。外部IDの平文や個人名をURLへ保存しない。
-- 最終ローカル自動検証はVitest 112件、Playwright 20件、PGlite 10マイグレーション、Production buildが成功。Lighthouseの直近値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a620c8488d5e7867e7ba54c`。
+- 最終ローカル自動検証はVitest 113件、Playwright 31件成功・狭幅専用2件skip、PGlite 11マイグレーション、Production buildが成功。Lighthouseの直近値はDesktop 1.00／Mobile 0.97、本番NetlifyはDeploy `6a621bfb498a064e045ec13a`。
 - フェーズ8・9の統合チェックポイント`c02a743`までGitHub `main`へpush済み。GitHub Actions `Validate application` run `30001049555`でunit、build、Playwright、Lighthouse、artifact upload、backend validateが全成功した。
 - 実機接続を試みたが、この実行環境のADBブリッジは接続拒否（OS error 10061）、BrowserMCPは`Transport closed`のため、物理端末テストを完了扱いにはしていない。下記「フェーズ3実機依存確認」の手順で端末接続可能時に実施する。
 
@@ -24,6 +24,15 @@
 
 1. LINE Messaging APIとDiscord Applicationの本番資格情報をSupabase secretsへ登録し、実アカウントで署名付きWebhookをE2E確認する。
 2. 実スマートフォン、実通知先、Supabase WAF／Rate Limitingの運用受け入れを上記手順で実施する。
+
+## 2026-07-23 320px縦型UI・同名参加者対応
+
+- 320px幅をPlaywrightの`narrow-mobile`プロジェクトへ追加した。主要タブは「支出・立替・精算・支払」の短縮表示にし、支出追加ボタンをカテゴリ絞り込みより上へ分離した。ヘッダー、支払い見出し、設定参加者一覧、立替グラフも320pxで切れない寸法へ調整した。
+- 精算画面の債務マトリクスと切替タブを撤去し、関係マップを常時表示する。ペアカードと内訳は維持する。
+- 同じ参加者名を登録できるようにし、最初の名前を維持して後続を`名前(1)`、`名前(2)`と自動採番する。共有参加、幹事代理登録、ローカルデモで同じ規則を使う。
+- `20260723000700_duplicate_member_names.sql`をリンク済みSupabaseへ適用した。Docker不要検証では11マイグレーションと重複登録フローが成功した。実Postgres pgTAPの再実行はDB接続資格情報がこの端末にないため未実施。
+- Vitest 113件、Playwright 31件、Production build、Lighthouse Desktop 1.00／Mobile 0.97、`git diff --check`が成功した。
+- NetlifyはProduction contextで1回だけビルド・デプロイし、Deploy `6a621bfb498a064e045ec13a`へ反映した。`https://polaris-warikan.netlify.app`を新規Chromiumの320px幅で支出・精算・支払い・立替・設定まで巡回し、HTTP成功、ページ横はみ出しなし、console／page error 0件を確認した。
 
 ## 2026-07-23 Sentry本番受け入れ
 
@@ -505,7 +514,7 @@ Playwrightはlist＋HTML reporterを使い、CIで`playwright-report`を常にar
 
 再送は即時・3秒後・9秒後の最大3回とし、失敗後は自動ループを止める。支出一覧には待機中・送信中・失敗を表示し、失敗項目の手動リトライと送信前削除ができる。旧キュー形式は`pending`・0回として安全に読み替える。実機復帰E2Eは引き続き残件。
 
-債務マトリクスを関係マップと切替可能な形で追加。行から列へ支払う有向表で、4人デモの6精算を一画面で確認できる。支払い済み表示と比較カード連動を含み、Desktop／Pixel 5相当のPlaywright全16件が成功している。
+債務マトリクスは一度関係マップとの切替表示として追加したが、2026-07-23のユーザー確認で分かりにくいと判断し、後続変更でUIから撤去した。現在の精算画面は関係マップ、ペアカード、内訳の構成。
 
 共有URLは新規イベントから32ランダムbyte（base64url 43文字）を使用する。認証済み幹事は設定画面の二段階確認からURLを再発行でき、旧URLは即時無効、新URLだけが有効になる。操作は`activity_logs`へ記録する。最終検証はユニットテスト全70件、Playwright全16件、PGliteの7マイグレーションが成功。Supabase側WAF／Rate Limitingはダッシュボード運用残件で、送信元IPを信頼できないPostgres RPC内に擬似的なIP制限は置かない。
 

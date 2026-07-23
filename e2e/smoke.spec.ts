@@ -111,16 +111,37 @@ test('serves installable PWA metadata and service worker', async ({ page, reques
   expect(serviceWorkerResponse.ok()).toBe(true)
 })
 
-test('shows the four-person settlement matrix without page overflow', async ({ page }) => {
+test('shows the relationship map without the removed matrix switch', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: '4人・2泊3日・全件金額指定テンプレート' }).click()
   await page.getByRole('button', { name: 'みんなの精算状況' }).click()
-  await page.getByRole('tab', { name: '金額表' }).click()
 
-  const matrix = page.getByRole('table', { name: '行の人が列の人へ支払う精算額' })
-  await expect(matrix).toBeVisible()
-  await expect(matrix.getByRole('button')).toHaveCount(6)
-  await expect(matrix).toContainText('¥14,400')
+  await expect(page.getByRole('heading', { name: '精算関係マップ' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: '金額表' })).toHaveCount(0)
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
   expect(overflow).toBe(false)
+})
+
+test('keeps narrow portrait navigation and expense controls separated', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'narrow-mobile', '320px-specific regression check')
+
+  await page.goto('/')
+  await page.getByRole('button', { name: '4人・2泊3日・全件金額指定テンプレート' }).click()
+
+  const tabsFit = await page.locator('.event-section-tabs button').evaluateAll((buttons) =>
+    buttons.every((button) => button.scrollWidth <= button.clientWidth),
+  )
+  expect(tabsFit).toBe(true)
+
+  const addButton = await page.getByRole('button', { name: '支出を追加' }).first().boundingBox()
+  const filters = await page.locator('.category-tabs').boundingBox()
+  expect(addButton).not.toBeNull()
+  expect(filters).not.toBeNull()
+  expect(addButton!.y + addButton!.height).toBeLessThanOrEqual(filters!.y + 1)
+
+  for (const name of ['立替ダッシュボード', 'みんなの精算状況', '支払い・受け取り', '支出イベント']) {
+    await page.getByRole('button', { name }).click()
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)
+    expect(overflow).toBe(false)
+  }
 })

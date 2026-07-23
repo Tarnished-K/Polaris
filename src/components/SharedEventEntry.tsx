@@ -86,7 +86,7 @@ export function SharedEventEntry({
                     }}
                   />
                 </label>
-                <p className="field-hint">このブラウザをあなたの参加者情報に紐付けます。ログインは不要です。</p>
+                <p className="field-hint">ログインは不要です。同じ名前の人がいる場合は末尾に番号が付きます。</p>
                 {submitError && <p className="form-error" role="alert">{submitError}</p>}
                 <button type="button" className="button button--primary button--full" disabled={submitting} onClick={() => void join()}>
                   {submitting ? '参加しています…' : 'このイベントに参加する'}

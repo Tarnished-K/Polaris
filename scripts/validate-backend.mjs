@@ -36,7 +36,7 @@ try {
   const organizerId = '10000000-0000-0000-0000-000000000001'
   await database.query('insert into auth.users(id) values ($1)', [organizerId])
   await database.query("select set_config('request.jwt.claim.sub', $1, false)", [organizerId])
-  await database.query("select public.create_event('Backend smoke test', 'overnight', '2026-07-18', '2026-07-20', 4)")
+  await database.query("select public.create_event('Backend smoke test', 'overnight', '2026-07-18', '2026-07-20', 6)")
 
   const eventResult = await database.query("select id, share_token from public.events where title = 'Backend smoke test'")
   assert.equal(eventResult.rows.length, 1)
@@ -45,14 +45,19 @@ try {
   await database.query('select public.organizer_add_member($1::uuid, $2)', [eventId, 'Proxy'])
   const deviceToken = 'device-token-that-is-at-least-thirty-two-characters'
   const otherDeviceToken = 'other-device-token-that-is-at-least-thirty-two-characters'
+  const duplicateDeviceToken = 'duplicate-device-token-that-is-at-least-thirty-two-characters'
   await database.query('select public.join_event($1, $2, $3)', [shareToken, deviceToken, 'Participant'])
   await database.query('select public.join_event($1, $2, $3)', [shareToken, otherDeviceToken, 'Other participant'])
+  await database.query('select public.organizer_add_member($1::uuid, $2)', [eventId, 'Proxy'])
+  await database.query('select public.join_event($1, $2, $3)', [shareToken, duplicateDeviceToken, 'Participant'])
 
   const members = await database.query('select id, name from public.members where event_id = $1::uuid order by created_at', [eventId])
   const payer = members.rows.find((member) => member.name === 'Participant')
   const proxy = members.rows.find((member) => member.name === 'Proxy')
   const otherParticipant = members.rows.find((member) => member.name === 'Other participant')
   assert.ok(payer && proxy && otherParticipant)
+  assert.ok(members.rows.some((member) => member.name === 'Proxy(1)'))
+  assert.ok(members.rows.some((member) => member.name === 'Participant(1)'))
   await database.query("select set_config('request.jwt.claim.sub', '', false)")
 
   await database.query(
@@ -351,7 +356,7 @@ try {
   assert.equal(jobs.rows[0]?.status, 'pending')
 
   const stateResult = await database.query('select public.get_event_state($1) as state', [shareToken])
-  assert.equal(stateResult.rows[0].state.members.length, 4)
+  assert.equal(stateResult.rows[0].state.members.length, 6)
   assert.equal(stateResult.rows[0].state.expenses.length, 3)
 
   const organizerMember = await database.query(

@@ -10,7 +10,6 @@ import type {
 import { CATEGORY_META } from '../domain/types'
 import { EventHeader } from './EventHeader'
 import { OrganizerControls } from './OrganizerControls'
-import { SettlementMatrixView } from './SettlementMatrixView'
 import type { UnfinalizeEventResult } from '../backend/types'
 import {
   amountToStrokeWidth,
@@ -928,7 +927,6 @@ export function SettlementView({
   const organizer = Boolean(currentMember?.isOrganizer)
   const finalized = event.status === 'finalized'
   const [selectedSettlementId, setSelectedSettlementId] = useState<string | null>(null)
-  const [overviewMode, setOverviewMode] = useState<'map' | 'matrix'>('map')
   const visibleSettlements = useMemo(
     () =>
       organizer
@@ -1085,28 +1083,14 @@ export function SettlementView({
               </section>
 
               <div className="settlement-overview">
-                <div className="settlement-overview__tabs" role="tablist" aria-label="精算の全体表示">
-                  <button type="button" role="tab" aria-selected={overviewMode === 'map'} className={overviewMode === 'map' ? 'is-active' : ''} onClick={() => setOverviewMode('map')}>関係マップ</button>
-                  <button type="button" role="tab" aria-selected={overviewMode === 'matrix'} className={overviewMode === 'matrix' ? 'is-active' : ''} onClick={() => setOverviewMode('matrix')}>金額表</button>
-                </div>
-                {overviewMode === 'map' ? (
-                  <SettlementRelationshipMap
-                    settlements={visibleSettlements}
-                    members={members}
-                    currentMemberId={currentMemberId}
-                    organizer={organizer}
-                    selectedSettlementId={selectedSettlementId}
-                    onSelectSettlement={setSelectedSettlementId}
-                  />
-                ) : (
-                  <SettlementMatrixView
-                    settlements={visibleSettlements}
-                    members={members}
-                    currentMemberId={currentMemberId}
-                    selectedSettlementId={selectedSettlementId}
-                    onSelectSettlement={setSelectedSettlementId}
-                  />
-                )}
+                <SettlementRelationshipMap
+                  settlements={visibleSettlements}
+                  members={members}
+                  currentMemberId={currentMemberId}
+                  organizer={organizer}
+                  selectedSettlementId={selectedSettlementId}
+                  onSelectSettlement={setSelectedSettlementId}
+                />
               </div>
             </div>
           </section>

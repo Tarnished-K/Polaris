@@ -2,7 +2,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set search_path = public, extensions;
 
-select plan(28);
+select plan(32);
 
 select has_table('public', 'events', 'events table exists');
 select has_table('public', 'members', 'members table exists');
@@ -20,7 +20,7 @@ values ('10000000-0000-0000-0000-000000000001', 'organizer@example.com', now(), 
 select set_config('request.jwt.claim.sub', '10000000-0000-0000-0000-000000000001', true);
 
 select lives_ok(
-  $$select public.create_event('SQLテスト旅行', 'overnight', '2026-07-18', '2026-07-20', 4)$$,
+  $$select public.create_event('SQLテスト旅行', 'overnight', '2026-07-18', '2026-07-20', 6)$$,
   'authenticated organizer creates an event'
 );
 select is((select count(*)::integer from public.events where title = 'SQLテスト旅行'), 1, 'one event was created');
@@ -93,6 +93,28 @@ select lives_ok(
 )
 from public.events e where e.title = 'SQLテスト旅行';
 select is((select status::text from public.notification_jobs where dedupe_key = 'invite:initial'), 'pending', 'notification starts pending');
+
+select lives_ok(
+  format('select public.organizer_add_member(%L::uuid, %L)', e.id, '代理参加者'),
+  'organizer can add a duplicate display name'
+)
+from public.events e where e.title = 'SQLテスト旅行';
+select is(
+  (select name from public.members where event_id = (select id from public.events where title = 'SQLテスト旅行') and name = '代理参加者(1)'),
+  '代理参加者(1)',
+  'organizer duplicate receives suffix one'
+);
+
+select lives_ok(
+  format('select public.join_event(%L, %L, %L)', e.share_token, repeat('e', 43), '参加者'),
+  'accountless participant can join with a duplicate display name'
+)
+from public.events e where e.title = 'SQLテスト旅行';
+select is(
+  (select name from public.members where event_id = (select id from public.events where title = 'SQLテスト旅行') and name = '参加者(1)'),
+  '参加者(1)',
+  'joining duplicate receives suffix one'
+);
 
 select * from finish();
 rollback;

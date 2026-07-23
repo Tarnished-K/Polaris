@@ -8,6 +8,15 @@ export function validateMemberName(name: string): { valid: boolean; error?: stri
   return { valid: true }
 }
 
+export function nextAvailableMemberName(existingNames: string[], requestedName: string): string {
+  const base = requestedName.trim()
+  if (!existingNames.includes(base)) return base
+
+  let suffix = 1
+  while (existingNames.includes(`${base}(${suffix})`)) suffix += 1
+  return `${base}(${suffix})`
+}
+
 export function validateDiscordWebhookUrl(value: string): { valid: boolean; error?: string } {
   try {
     const url = new URL(value.trim())

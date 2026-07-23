@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   RESERVED_MEMBER_NAME_ERROR,
+  nextAvailableMemberName,
   validateDiscordWebhookUrl,
   validateLineDestination,
   validateMemberName,
@@ -17,6 +18,14 @@ describe('validateMemberName', () => {
   })
   it('rejects blank names', () => {
     expect(validateMemberName('  ').valid).toBe(false)
+  })
+})
+
+describe('nextAvailableMemberName', () => {
+  it('keeps the first name and numbers later duplicates from one', () => {
+    expect(nextAvailableMemberName([], ' 佐藤 ')).toBe('佐藤')
+    expect(nextAvailableMemberName(['佐藤'], '佐藤')).toBe('佐藤(1)')
+    expect(nextAvailableMemberName(['佐藤', '佐藤(1)'], '佐藤')).toBe('佐藤(2)')
   })
 })
 
